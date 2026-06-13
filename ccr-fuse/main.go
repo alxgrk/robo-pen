@@ -27,6 +27,11 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "lint" {
+		runLint(os.Args[2:])
+		return
+	}
+
 	backing := flag.String("backing", "", "backing host directory (absolute)")
 	shadow := flag.String("shadow", "", "shadow store directory (absolute)")
 	mountpoint := flag.String("mount", "", "mount point (absolute)")

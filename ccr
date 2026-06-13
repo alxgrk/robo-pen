@@ -40,6 +40,19 @@ if [[ "$1" == "--recipes" ]]; then
     exit 0
 fi
 
+# `ccr lint` runs the host-side ccr-fuse binary against the .ccrshadow in the
+# caller's cwd. No container start required.
+if [[ "$1" == "lint" ]]; then
+    shift
+    HOST_BIN="$CLAUDE_CONTAINER_DIR/ccr-fuse/ccr-fuse-darwin-arm64"
+    if [[ ! -x "$HOST_BIN" ]]; then
+        echo "ccr lint: host binary missing at $HOST_BIN" >&2
+        echo "Run 'ccr build-host' to cross-build it (one-time setup)." >&2
+        exit 1
+    fi
+    exec "$HOST_BIN" lint "$@"
+fi
+
 # Note: --working-directory is intentionally NOT set, so that just's
 # `invocation_directory()` returns the caller's actual cwd, enabling
 # cwd-anchored container mounts.

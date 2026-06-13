@@ -35,6 +35,16 @@ build:
 rebuild:
     container build -m {{build_memory}} --no-cache -t {{image}} {{justfile_directory()}}
 
+# Cross-build the host-side ccr-fuse binary (darwin/arm64), used by `ccr lint`
+build-host:
+    container run --rm \
+        -v "{{justfile_directory()}}/ccr-fuse":/src \
+        -w /src \
+        -e GOOS=darwin -e GOARCH=arm64 -e CGO_ENABLED=0 \
+        golang:1.22-alpine \
+        go build -o /src/ccr-fuse-darwin-arm64 -ldflags "-s -w" .
+    @echo "Built {{justfile_directory()}}/ccr-fuse/ccr-fuse-darwin-arm64"
+
 # ── Container lifecycle ───────────────────────────────────────────
 
 # Internal: auto-create container if missing (bound to cwd), else verify its

@@ -4,7 +4,7 @@ FROM golang:1.22-alpine AS ccr-fuse-build
 WORKDIR /src
 COPY ccr-fuse/go.mod ccr-fuse/go.sum ./
 RUN go mod download
-COPY ccr-fuse/main.go ccr-fuse/host_node.go ccr-fuse/rules.go ./
+COPY ccr-fuse/main.go ccr-fuse/host_node.go ccr-fuse/rules.go ccr-fuse/lint.go ./
 RUN CGO_ENABLED=0 go build -o /out/ccr-fuse -ldflags "-s -w" .
 
 # ── Stage 2: runtime image ───────────────────────────────────────

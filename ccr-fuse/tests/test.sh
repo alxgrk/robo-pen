@@ -22,7 +22,7 @@ mkdir -p "$HOST/node_modules"
 echo "real-pkg" > "$HOST/node_modules/pre-existing"
 
 # Rules file
-cat > "$HOST/.ccrshadow" <<EOF
+mkdir -p "$HOST/.ccr" && cat > "$HOST/.ccr/shadow" <<EOF
 .env.local
 node_modules
 .aws/credentials
@@ -33,7 +33,7 @@ find "$HOST" -type f -o -type d | sort
 echo
 
 # Launch
-/tools/ccr-fuse --backing "$HOST" --shadow "$SHADOW" --mount "$MNT" --rules "$HOST/.ccrshadow" &
+/tools/ccr-fuse --backing "$HOST" --shadow "$SHADOW" --mount "$MNT" --rules "$HOST/.ccr/shadow" &
 FPID=$!
 for i in 1 2 3 4 5 10; do mountpoint -q "$MNT" && break; sleep 0.2; done
 mountpoint -q "$MNT" || { echo FAIL; exit 1; }

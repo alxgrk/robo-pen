@@ -40,7 +40,7 @@ if [[ "$1" == "--recipes" ]]; then
     exit 0
 fi
 
-# `ccr lint` runs the host-side ccr-fuse binary against the .ccrshadow in the
+# `ccr lint` runs the host-side ccr-fuse binary against the .ccr/shadow in the
 # caller's cwd. No container start required.
 if [[ "$1" == "lint" ]]; then
     shift

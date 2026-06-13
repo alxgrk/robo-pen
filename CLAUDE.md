@@ -52,7 +52,7 @@ config/
   claude-settings.json  — baked into image at /home/coder/.claude/settings.json (bypassPermissions + full allow list)
   ccr-init.sh           — baked into image at /usr/local/bin/ccr-init.sh; runs as PID 1; execs ccr-fuse
 .env.example            — template for ANTHROPIC_API_KEY
-.ccrshadow.example      — template for .ccrshadow (gitignore-style patterns)
+.ccr.example/shadow      — template for .ccr/shadow (gitignore-style patterns)
 ```
 
 **Key design points:**
@@ -67,12 +67,12 @@ config/
 - `ccr create <name> -- <container-args>` passes extra `container` CLI flags (e.g., extra volume mounts, port bindings)
 - `ccr` defaults to `~/repos/claude-container`; override with `CLAUDE_CONTAINER_DIR`
 - `build`/`rebuild` use `{{justfile_directory()}}` as the build context (not `.`), so they work regardless of where `ccr` was invoked
-- **Shadow filtering via `.ccrshadow`** (`ccr-fuse` driven, launched by `ccr-init.sh` at PID 1): containers are created with `--cap-add SYS_ADMIN --user 0`. The init script execs `ccr-fuse --backing /workspace-real --shadow /var/lib/ccr/shadow --mount /workspace --rules /workspace-real/.ccrshadow`. `.ccrshadow` uses a strict subset of gitignore syntax (one pattern per line; `*`, `**`, `?`, `[…]`, leading `/` or any mid-`/` anchors to root, trailing `/` for directory-only; no negation). For every path that matches a pattern:
+- **Shadow filtering via `.ccr/shadow`** (`ccr-fuse` driven, launched by `ccr-init.sh` at PID 1): containers are created with `--cap-add SYS_ADMIN --user 0`. The init script execs `ccr-fuse --backing /workspace-real --shadow /var/lib/ccr/shadow --mount /workspace --rules /workspace-real/.ccr/shadow`. `.ccr/shadow` uses a strict subset of gitignore syntax (one pattern per line; `*`, `**`, `?`, `[…]`, leading `/` or any mid-`/` anchors to root, trailing `/` for directory-only; no negation). For every path that matches a pattern:
   - Host's matching content is INVISIBLE in the container (`stat` returns ENOENT).
   - Container creates/writes/deletes go to `/var/lib/ccr/shadow/<rel-path>` — NEVER to the host bind.
   - Build scripts that `rm -rf node_modules && reinstall` are fully contained: the host filesystem is never touched.
   - The shadow store survives `ccr stop`/`start`; wiped on `ccr destroy`.
-- Paths NOT matched by `.ccrshadow` pass through `ccr-fuse` to `/workspace-real`. Edits to source files propagate to the host as expected.
+- Paths NOT matched by `.ccr/shadow` pass through `ccr-fuse` to `/workspace-real`. Edits to source files propagate to the host as expected.
 - Init runs as root (UID 0) for `/dev/fuse` access; `container exec -u coder` on all interactive recipes (`shell`, `login`, `claude`, `claude-safe`) so user sessions run as `coder`. `ccr-fuse` mounts with `allow_other`, and `/etc/fuse.conf` has `user_allow_other` enabled in the image.
 
 ## Agent skills

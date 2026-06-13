@@ -5,9 +5,9 @@ You are running inside an isolated container (Debian bookworm). You run as user 
 ## Directory Layout
 
 - `/workspace` — **Project files**, mediated by `ccr-fuse`. All work should happen here.
-  - Paths NOT listed in `/workspace/.ccrshadow` pass through to the host bind — edits propagate to the host filesystem normally.
-  - Paths LISTED in `/workspace/.ccrshadow` are container-local: their content lives only inside the container's shadow store and never touches the host. Host's matching files are invisible.
-- `/workspace/.ccrshadow` — Read-only inside the container. Edit it from the host to change the shadow rules; restart the container (`ccr stop && ccr start`) for the change to take effect.
+  - Paths NOT listed in `/workspace/.ccr/shadow` pass through to the host bind — edits propagate to the host filesystem normally.
+  - Paths LISTED in `/workspace/.ccr/shadow` are container-local: their content lives only inside the container's shadow store and never touches the host. Host's matching files are invisible.
+- `/workspace/.ccr/shadow` — Read-only inside the container. Edit it from the host to change the shadow rules; restart the container (`ccr stop && ccr start`) for the change to take effect.
 - `/home/coder` — Your home directory. Ephemeral — lost when the container is destroyed.
 
 ## Available Tools
@@ -40,7 +40,7 @@ R -e 'install.packages("tidyverse", repos="https://cloud.r-project.org")'
 
 ## Tips
 
-- Build artifacts (`node_modules`, `.venv`, `target`, etc.) that should not pollute the host filesystem belong in `.ccrshadow` (already there in the default template).
+- Build artifacts (`node_modules`, `.venv`, `target`, etc.) that should not pollute the host filesystem belong in `.ccr/shadow` (already there in the default template).
 - `rm -rf node_modules && reinstall` cycles work correctly: the host filesystem is never touched.
 - If something goes wrong, the host can destroy and recreate the container without losing host-side `/workspace` files (the shadow store is wiped, the host bind is intact).
 - Authentication is handled either via `claude login` (subscription) or the `ANTHROPIC_API_KEY` environment variable (API key).

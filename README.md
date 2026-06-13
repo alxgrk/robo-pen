@@ -10,7 +10,7 @@ Requires Apple Silicon + macOS 26+.
 
 - **Claude Code in a sandbox.** The container is started with `--dangerously-skip-permissions` but can only touch what you let it touch.
 - **Per-folder containers.** `cd ~/my-project && ccr claude` auto-creates `claude-my-project` and mounts that folder as `/workspace`. Stop, start, destroy — your files stay on the Mac.
-- **`.ccrshadow` filtering.** A gitignore-style file at your workspace root tells `ccr-fuse` which paths are container-local. Host secrets (`.env.local`, `.aws/credentials`) stay invisible. Build artifacts (`node_modules`, `.venv`, `target`) live only in the container, so architecture mismatches and `rm -rf node_modules` cycles never pollute the host.
+- **`.ccr/shadow` filtering.** A gitignore-style file at your workspace root tells `ccr-fuse` which paths are container-local. Host secrets (`.env.local`, `.aws/credentials`) stay invisible. Build artifacts (`node_modules`, `.venv`, `target`) live only in the container, so architecture mismatches and `rm -rf node_modules` cycles never pollute the host.
 - **Real security boundary.** The container's user has no `sudo` and no capabilities. The host bind is hidden in a root-only mount; `coder` cannot bypass the shadow layer even with intent. See `docs/adr/0005-shadow-as-security-boundary-via-drop-sudo.md`.
 
 ---
@@ -49,7 +49,7 @@ ccr stop                   # pause
 ccr start                  # resume
 ccr destroy                # remove container (host files untouched)
 ccr list                   # show all claude-* containers + their workspace paths
-ccr lint                   # check the .ccrshadow file in cwd (see below)
+ccr lint                   # check the .ccr/shadow file in cwd (see below)
 ```
 
 Pass an explicit name as the last argument if you want a different name from the folder basename:
@@ -61,9 +61,9 @@ ccr claude  my-name "summarize the README"
 
 ---
 
-## `.ccrshadow` — selective shadowing
+## `.ccr/shadow` — selective shadowing
 
-Put a `.ccrshadow` file at the root of any workspace to filter paths between host and container. Syntax is a strict subset of `.gitignore`:
+Put a `.ccr/shadow` file at the root of any workspace to filter paths between host and container. Syntax is a strict subset of `.gitignore`:
 
 ```
 # secrets — host versions stay invisible inside the container
@@ -98,20 +98,20 @@ For every matched path:
 - `rm -rf node_modules && npm install` cycles work normally — host stays untouched.
 - The shadow store survives `ccr stop`/`start`. `ccr destroy` wipes it.
 
-Edit `.ccrshadow` from the host. Inside the container it is **read-only** — Claude can `cat` it to understand what's filtered but cannot modify the ruleset. Changes require `ccr stop && ccr start` to take effect.
+Edit `.ccr/shadow` from the host. Inside the container it is **read-only** — Claude can `cat` it to understand what's filtered but cannot modify the ruleset. Changes require `ccr stop && ccr start` to take effect.
 
-See `.ccrshadow.example` for a copy-paste-ready starting point.
+See `.ccr.example/shadow` for a copy-paste-ready starting point.
 
 ### `ccr lint`
 
-Sanity-check your `.ccrshadow` before activating it:
+Sanity-check your `.ccr/shadow` before activating it:
 
 ```bash
 $ cd ~/my-project
 $ ccr lint
-.ccrshadow:1: node_modules     OK    literal-unanchored
-.ccrshadow:2: *.log            OK    glob-unanchored
-.ccrshadow:3: !keep            WARN  negation not supported; skipped
+.ccr/shadow:1: node_modules     OK    literal-unanchored
+.ccr/shadow:2: *.log            OK    glob-unanchored
+.ccr/shadow:3: !keep            WARN  negation not supported; skipped
 
 Summary: 2 active, 1 warning, 0 error
 
@@ -143,7 +143,7 @@ Read `docs/adr/0005-shadow-as-security-boundary-via-drop-sudo.md` for the full r
 - The shadow store and the host bind both live under `/var/lib/ccr/` (mode 0700, root-only). `coder` cannot traverse it.
 - `coder` has no capabilities and no sudo, so it cannot `umount` the tmpfs or escalate to root to bypass any of the above.
 
-What this means concretely: if you list `.env.local` in `.ccrshadow`, the contents of your host `.env.local` are unreachable to anything running inside the container.
+What this means concretely: if you list `.env.local` in `.ccr/shadow`, the contents of your host `.env.local` are unreachable to anything running inside the container.
 
 ---
 
@@ -162,7 +162,7 @@ docs/
   adr/                   architecture decision records
   agents/                config for matt-pocock-style engineering skills
 CONTEXT.md               domain vocabulary (Shadow, Shadow store, Passthrough, ...)
-.ccrshadow.example       copy-paste-ready .ccrshadow template
+.ccr.example/shadow       copy-paste-ready .ccr/shadow template
 ```
 
 See `CLAUDE.md` for the developer-facing summary and `CONTEXT.md` for the vocabulary used across docs and code.

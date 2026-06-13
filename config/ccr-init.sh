@@ -27,7 +27,7 @@ REAL=/workspace-real
 MNT=/workspace
 BACKING=/var/lib/ccr/backing
 SHADOW=/var/lib/ccr/shadow
-RULES="$BACKING/.ccrshadow"
+RULES="$BACKING/.ccr/shadow"
 
 if [ ! -d "$REAL" ]; then
     echo "ccr-init: $REAL does not exist; nothing to mount" >&2
@@ -67,7 +67,7 @@ if [ -f "$RULES" ]; then
     RULES_FLAG="--rules $RULES"
     echo "ccr-init: using rules from $RULES" >&2
 else
-    echo "ccr-init: no .ccrshadow in workspace; pure passthrough" >&2
+    echo "ccr-init: no .ccr/shadow in workspace; pure passthrough" >&2
 fi
 
 echo "ccr-init: launching ccr-fuse" >&2

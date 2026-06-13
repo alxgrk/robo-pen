@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// LintEntry is one diagnosed line from a .ccrshadow file.
+// LintEntry is one diagnosed line from a .ccr/shadow file.
 type LintEntry struct {
 	Line     int    // 1-based source line number
 	Raw      string // raw pattern as written, trimmed of whitespace
@@ -24,13 +24,13 @@ func runLint(args []string) {
 	fs := flag.NewFlagSet("lint", flag.ExitOnError)
 	matchPath := fs.String("match", "", "report whether this workspace-relative path would be shadowed")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: ccr-fuse lint [--match <path>] [<.ccrshadow file>]")
-		fmt.Fprintln(os.Stderr, "  Default file: .ccrshadow in the current directory.")
+		fmt.Fprintln(os.Stderr, "Usage: ccr-fuse lint [--match <path>] [<.ccr/shadow file>]")
+		fmt.Fprintln(os.Stderr, "  Default file: .ccr/shadow in the current directory.")
 		fs.PrintDefaults()
 	}
 	_ = fs.Parse(args)
 
-	path := ".ccrshadow"
+	path := ".ccr/shadow"
 	if fs.NArg() > 0 {
 		path = fs.Arg(0)
 	}
@@ -97,7 +97,7 @@ func describe(e LintEntry) string {
 	return e.Class
 }
 
-// lintReader walks the .ccrshadow content and classifies each non-empty line.
+// lintReader walks the .ccr/shadow content and classifies each non-empty line.
 // Errors and warnings do not abort — they show up as entries with their own
 // Status. Returns I/O errors from the scanner.
 func lintReader(r io.Reader) ([]LintEntry, error) {

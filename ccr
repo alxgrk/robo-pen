@@ -17,17 +17,18 @@ fi
 if [[ $# -eq 0 ]]; then
     echo "Usage: ccr <recipe> [args...]"
     echo ""
-    echo "Examples:"
+    echo "Examples (cwd-anchored — container name defaults to basename of \$PWD):"
+    echo "  cd ~/my-repo && ccr claude       Auto-create/start container for this dir"
+    echo "  ccr shell                        Open a shell into the cwd container"
+    echo "  ccr login                        Authenticate Claude in the cwd container"
+    echo "  ccr destroy                      Remove the cwd container"
+    echo ""
+    echo "Explicit name still works (overrides cwd-based default):"
     echo "  ccr build                        Build the container image"
-    echo "  ccr create my-project            Create a new container"
-    echo "  ccr claude my-project            Start Claude in YOLO mode"
+    echo "  ccr create my-project            Create a container named claude-my-project"
     echo "  ccr claude my-project \"prompt\"    Run Claude with a prompt"
     echo "  ccr claude-safe my-project       Start Claude in safe mode"
-    echo "  ccr login my-project             Log in with subscription"
-    echo "  ccr shell my-project             Open a shell"
-    echo "  ccr stop my-project              Stop a container"
-    echo "  ccr destroy my-project           Remove a container"
-    echo "  ccr list                         List all containers"
+    echo "  ccr list                         List all containers + their workspaces"
     echo "  ccr stats                        Show resource usage"
     echo ""
     echo "Run 'ccr --recipes' to see all available recipes."
@@ -35,8 +36,11 @@ if [[ $# -eq 0 ]]; then
 fi
 
 if [[ "$1" == "--recipes" ]]; then
-    just --justfile "$CLAUDE_CONTAINER_DIR/Justfile" --working-directory "$CLAUDE_CONTAINER_DIR" --list
+    just --justfile "$CLAUDE_CONTAINER_DIR/Justfile" --list
     exit 0
 fi
 
-exec just --justfile "$CLAUDE_CONTAINER_DIR/Justfile" --working-directory "$CLAUDE_CONTAINER_DIR" "$@"
+# Note: --working-directory is intentionally NOT set, so that just's
+# `invocation_directory()` returns the caller's actual cwd, enabling
+# cwd-anchored container mounts.
+exec just --justfile "$CLAUDE_CONTAINER_DIR/Justfile" "$@"

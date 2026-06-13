@@ -1,14 +1,25 @@
+# ── Stage 1: build ccr-fuse (Go) ─────────────────────────────────
+FROM golang:1.22-alpine AS ccr-fuse-build
+
+WORKDIR /src
+COPY ccr-fuse/go.mod ccr-fuse/go.sum ./
+RUN go mod download
+COPY ccr-fuse/main.go ccr-fuse/host_node.go ccr-fuse/rules.go ./
+RUN CGO_ENABLED=0 go build -o /out/ccr-fuse -ldflags "-s -w" .
+
+# ── Stage 2: runtime image ───────────────────────────────────────
 FROM debian:bookworm-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# ── System packages ──────────────────────────────────────────────
+# ── System packages (incl. fuse3 for ccr-fuse) ───────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
         apt-utils git curl ca-certificates sudo \
         build-essential \
         python3 python3-dev python3-venv \
         r-base \
         locales \
+        fuse3 \
     && sed -i 's/^# *\(en_US.UTF-8\)/\1/' /etc/locale.gen \
     && locale-gen \
     && rm -rf /var/lib/apt/lists/*
@@ -38,6 +49,10 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash 
 RUN useradd -m -s /bin/bash -u 1000 coder \
     && echo "coder ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/coder
 
+# Allow coder user to access FUSE-mounted filesystem with allow_other.
+RUN sed -i 's/^#user_allow_other/user_allow_other/' /etc/fuse.conf 2>/dev/null \
+    || echo 'user_allow_other' >> /etc/fuse.conf
+
 USER coder
 WORKDIR /home/coder
 
@@ -52,5 +67,14 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 RUN mkdir -p /home/coder/.claude
 COPY --chown=coder:coder config/claude-settings.json /home/coder/.claude/settings.json
 COPY --chown=coder:coder config/CLAUDE.md /home/coder/.claude/CLAUDE.md
+
+# ── ccr-fuse binary + init script (run as PID 1 root at container start) ─
+USER root
+COPY --from=ccr-fuse-build /out/ccr-fuse /usr/local/bin/ccr-fuse
+COPY config/ccr-init.sh /usr/local/bin/ccr-init.sh
+RUN chmod 0755 /usr/local/bin/ccr-fuse /usr/local/bin/ccr-init.sh \
+    && mkdir -p /var/lib/ccr/overlay /workspace /workspace-real \
+    && chown coder:coder /var/lib/ccr/overlay
+USER coder
 
 WORKDIR /workspace

@@ -2,6 +2,9 @@ set dotenv-load
 
 image := "claude-container"
 prefix := "claude-"
+host_dir := invocation_directory()
+host_name := file_name(invocation_directory())
+build_memory := "8G"
 
 # ── Apple container setup ────────────────────────────────────────
 
@@ -24,92 +27,107 @@ service-status:
 
 # ── Image ─────────────────────────────────────────────────────────
 
-# Build the container image
+# Build the container image (builder VM gets enough RAM for the claude installer)
 build:
-    container build -t {{image}} .
+    container build -m {{build_memory}} -t {{image}} {{justfile_directory()}}
 
 # Rebuild without cache
 rebuild:
-    container build --no-cache -t {{image}} .
+    container build -m {{build_memory}} --no-cache -t {{image}} {{justfile_directory()}}
 
 # ── Container lifecycle ───────────────────────────────────────────
 
-# Create a new container with bind-mounted project dir
-create name *CONTAINER_ARGS:
+# Internal: auto-create container if missing (bound to cwd), else verify its
+# recorded host_path label matches cwd. Then ensure it is running. Called as
+# a dependency by interactive recipes.
+_ensure name=host_name:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! container list -a -q | grep -qx "{{prefix}}{{name}}"; then
+        container create \
+            --name {{prefix}}{{name}} \
+            --cap-add SYS_ADMIN \
+            --user 0 \
+            -l "ccr.host_path={{host_dir}}" \
+            -l ccr.managed=true \
+            -e ANTHROPIC_API_KEY \
+            -v "{{host_dir}}:/workspace-real" \
+            {{image}} \
+            /usr/local/bin/ccr-init.sh > /dev/null
+        echo "Auto-created container {{prefix}}{{name}} -> {{host_dir}}" >&2
+    else
+        recorded=$(container inspect {{prefix}}{{name}} 2>/dev/null | jq -r '.[0].configuration.labels["ccr.host_path"] // empty')
+        if [ -n "$recorded" ] && [ "$recorded" != "{{host_dir}}" ]; then
+            echo "ERROR: container {{prefix}}{{name}} is bound to: $recorded" >&2
+            echo "       current directory is:               {{host_dir}}" >&2
+            echo "" >&2
+            echo "Either cd into the recorded path, or use an explicit name:" >&2
+            echo "  ccr <recipe> <other-name>" >&2
+            exit 1
+        fi
+    fi
+    state=$(container inspect {{prefix}}{{name}} 2>/dev/null | jq -r '.[0].status.state' || true)
+    if [ "$state" != "running" ]; then
+        container start {{prefix}}{{name}} > /dev/null
+    fi
+
+# Create a new container, bind-mounting the current directory as /workspace
+create name=host_name *CONTAINER_ARGS:
     #!/usr/bin/env bash
     set -euo pipefail
     if container list -a -q | grep -qx "{{prefix}}{{name}}"; then
-        echo "Container {{prefix}}{{name}} already exists. Use 'just destroy {{name}}' first."
+        echo "Container {{prefix}}{{name}} already exists. Use 'ccr destroy {{name}}' first."
         exit 1
     fi
-    mkdir -p "$(pwd)/projects/{{name}}"
     container create \
         --name {{prefix}}{{name}} \
+        --cap-add SYS_ADMIN \
+        --user 0 \
+        -l "ccr.host_path={{host_dir}}" \
+        -l ccr.managed=true \
         -e ANTHROPIC_API_KEY \
-        -v "$(pwd)/projects/{{name}}:/workspace" \
+        -v "{{host_dir}}:/workspace-real" \
         {{CONTAINER_ARGS}} \
         {{image}} \
-        sleep infinity
-    echo "Container {{prefix}}{{name}} created. Project dir: projects/{{name}}/"
+        /usr/local/bin/ccr-init.sh
+    echo "Container {{prefix}}{{name}} created. Workspace: {{host_dir}}"
 
 # Start a stopped container
-start name:
+start name=host_name:
     container start {{prefix}}{{name}}
 
 # Stop a running container
-stop name:
+stop name=host_name:
     container stop {{prefix}}{{name}}
 
 # Restart a container
-restart name:
+restart name=host_name:
     container restart {{prefix}}{{name}}
 
-# Open a shell (auto-starts if stopped)
-shell name:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    state=$(container inspect {{prefix}}{{name}} 2>/dev/null | jq -r '.[0].status.state' || true)
-    if [ "$state" != "running" ]; then
-        container start {{prefix}}{{name}} > /dev/null
-    fi
-    container exec -it {{prefix}}{{name}} bash
+# Open a shell (auto-creates / auto-starts as needed)
+shell name=host_name: (_ensure name)
+    container exec -it -u coder {{prefix}}{{name}} bash
 
 # Log in to Claude with your subscription (opens a URL to authenticate)
-login name:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    state=$(container inspect {{prefix}}{{name}} 2>/dev/null | jq -r '.[0].status.state' || true)
-    if [ "$state" != "running" ]; then
-        container start {{prefix}}{{name}} > /dev/null
-    fi
-    container exec -it {{prefix}}{{name}} claude login
+login name=host_name: (_ensure name)
+    container exec -it -u coder {{prefix}}{{name}} claude login
 
-# Run Claude in YOLO mode (auto-starts, optional prompt)
-claude name *PROMPT:
+# Run Claude in YOLO mode (auto-creates / auto-starts, optional prompt)
+claude name=host_name *PROMPT: (_ensure name)
     #!/usr/bin/env bash
-    set -euo pipefail
-    state=$(container inspect {{prefix}}{{name}} 2>/dev/null | jq -r '.[0].status.state' || true)
-    if [ "$state" != "running" ]; then
-        container start {{prefix}}{{name}} > /dev/null
-    fi
     if [ -n "{{PROMPT}}" ]; then
-        container exec -it {{prefix}}{{name}} claude --dangerously-skip-permissions -p "{{PROMPT}}"
+        container exec -it -u coder {{prefix}}{{name}} claude --dangerously-skip-permissions -p "{{PROMPT}}"
     else
-        container exec -it {{prefix}}{{name}} claude --dangerously-skip-permissions
+        container exec -it -u coder {{prefix}}{{name}} claude --dangerously-skip-permissions
     fi
 
 # Run Claude in normal (permission-prompting) mode
-claude-safe name *PROMPT:
+claude-safe name=host_name *PROMPT: (_ensure name)
     #!/usr/bin/env bash
-    set -euo pipefail
-    state=$(container inspect {{prefix}}{{name}} 2>/dev/null | jq -r '.[0].status.state' || true)
-    if [ "$state" != "running" ]; then
-        container start {{prefix}}{{name}} > /dev/null
-    fi
     if [ -n "{{PROMPT}}" ]; then
-        container exec -it {{prefix}}{{name}} claude -p "{{PROMPT}}"
+        container exec -it -u coder {{prefix}}{{name}} claude -p "{{PROMPT}}"
     else
-        container exec -it {{prefix}}{{name}} claude
+        container exec -it -u coder {{prefix}}{{name}} claude
     fi
 
 # Copy files from host to container
@@ -120,21 +138,28 @@ cp-to name src dest:
 cp-from name src dest:
     container cp {{prefix}}{{name}}:{{src}} {{dest}}
 
-# Stop and remove a container (project files preserved on host)
-destroy name:
+# Stop and remove a container (workspace files on host untouched)
+destroy name=host_name:
     -container stop {{prefix}}{{name}} 2>/dev/null
     container delete {{prefix}}{{name}}
-    @echo "Container removed. Project files preserved in projects/{{name}}/"
+    @echo "Container {{prefix}}{{name}} removed. Workspace files on host untouched."
 
 # ── Info / diagnostics ────────────────────────────────────────────
 
-# List all claude containers
+# List all claude containers with their workspace path
 list:
     #!/usr/bin/env bash
-    container list -a | awk 'NR==1 || /^{{prefix}}/ { print $1"\t"$NF"\t"$2 }'
+    set -uo pipefail
+    {
+        printf "NAME\tSTATUS\tWORKSPACE\n"
+        container list -a -q 2>/dev/null | grep "^{{prefix}}" 2>/dev/null | while read -r n; do
+            container inspect "$n" 2>/dev/null \
+                | jq -r --arg n "$n" '.[0] | [$n, .status.state, (.configuration.labels["ccr.host_path"] // "-")] | @tsv'
+        done
+    } | column -t -s $'\t'
 
 # Show container logs
-logs name:
+logs name=host_name:
     container logs {{prefix}}{{name}}
 
 # Show resource usage for all containers

@@ -2,3 +2,6 @@ projects/
 .env
 .DS_Store
 .claude/
+
+# Locally-built ccr-fuse binary (built into the image via multi-stage Dockerfile).
+ccr-fuse/ccr-fuse

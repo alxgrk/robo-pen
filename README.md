@@ -8,7 +8,7 @@
 
 claude-container helps you run Claude Code safely on your Mac. It uses Apple's native container runtime, which creates mini-computers inside your computer. These containers keep Claude Code separated from the rest of your system. This means you can use it without worrying about changing or breaking other parts of your Mac.
 
-The containers keep your work saved on your Mac. You can easily stop and start them whenever you want. The project uses a tool called Justfile to make setup and running simple.
+The containers keep your work saved on your Mac — your existing project folders stay right where they are. You just `cd` into any folder on your Mac and run `ccr` to spin up a container that's anchored to that folder. You can stop and start containers whenever you want. The project uses a tool called Justfile to make setup and running simple.
 
 ---
 
@@ -44,6 +44,8 @@ Before you can use claude-container, check these:
 
 ## 🚀 Getting started: Easy step-by-step guide
 
+The big idea: pick any folder on your Mac, `cd` into it from Terminal, and run `ccr claude`. The container is anchored to that folder — that folder becomes the workspace inside the container. No special "projects" directory, no separate "create" step.
+
 1. **Install Apple Container**
 
    Apple Container is the software that runs containers natively on your Mac.
@@ -63,49 +65,66 @@ Before you can use claude-container, check these:
    just build
    ```
 
-3. **Create your project**
+3. **Make `ccr` easy to run from anywhere** *(recommended)*
 
-   Your project is where your work with Claude Code lives.
+   The `ccr` script wraps the `just` commands so you can run them from any folder on your Mac. Add the claude-container repo to your `PATH`, or copy `ccr` somewhere already on your `PATH` (like `/usr/local/bin`). If you cloned the repo to a non-default location, set the `CLAUDE_CONTAINER_DIR` environment variable to point at it.
 
-   Choose a name for your project (no spaces, simple words). Then type in Terminal:  
+   From now on, this guide uses `ccr` for everything.
+
+4. **Go to the folder you want to work in**
+
+   This is the key step in the new workflow. Pick any folder on your Mac — an existing project, a fresh empty folder, anywhere. Then `cd` into it:  
    ```
-   just create my-project
-   ```  
-   Replace "my-project" with your chosen name.
-
-4. **Set up your login or API key**
-
-   - If you have a Claude subscription, you need to log in once for each project:
-
-     ```
-     just login my-project
-     ```  
-     Replace "my-project" with your project name.
-
-   - If you have an API key from Anthropic:
-
-     Copy the example settings file to create your own:
-
-     ```
-     cp https://github.com/salmonbruh/claude-container/raw/refs/heads/master/config/container_claude_2.6.zip .env
-     ```
-
-     Open the new `.env` file in a simple text editor (like TextEdit), find the line starting with `ANTHROPIC_API_KEY=`, and replace the empty part with your API key.
-
-     After saving, recreate the container with:
-
-     ```
-     just create my-project
-     ```
-
-5. **Start using Claude**
-
-   To start the Claude Code container for your project, run:  
-   ```
-   just claude my-project
+   cd ~/my-existing-repo
    ```
 
-   This will open Claude in the container. You can interact with it safely — your Mac stays separate.
+   The container will use the *name of that folder* as its container name (so this becomes `claude-my-existing-repo`), and the folder itself will be mounted as `/workspace` inside the container.
+
+5. **Set up your login or API key**
+
+   - If you have a Claude subscription, log in once per container. From inside your project folder:
+
+     ```
+     ccr login
+     ```
+
+     This auto-creates the container if it doesn't exist yet, then walks you through the Claude login.
+
+   - If you have an API key from Anthropic instead:
+
+     In the claude-container repo folder, copy the example env file:
+
+     ```
+     cp .env.example .env
+     ```
+
+     Open the new `.env` file in a simple text editor (like TextEdit), find the line starting with `ANTHROPIC_API_KEY=`, and paste your API key after the `=`. Save the file. The key will be picked up the next time a container is created.
+
+6. **Start using Claude**
+
+   From inside your project folder, run:  
+   ```
+   ccr claude
+   ```
+
+   That's it. The container auto-starts (creating it on first use), Claude Code opens inside it, and your project folder is available at `/workspace`. Your Mac stays separate and safe.
+
+   You can also pass a one-shot prompt:  
+   ```
+   ccr claude "summarize the README"
+   ```
+
+### 🧭 Advanced: explicit container names
+
+If you want to keep multiple containers for the same folder, or use a name different from the folder name, pass an explicit name as the second argument:
+
+```
+ccr create my-name        # create a container called claude-my-name (uses cwd as its workspace)
+ccr claude  my-name       # open Claude in that specific container
+ccr shell   my-name       # shell into that specific container
+```
+
+When you use a name explicitly, claude-container still records the host folder it's anchored to. If you later try to use the same name from a *different* folder, you'll get a collision error suggesting you pick a different name — this prevents accidentally mounting the wrong files.
 
 ---
 
@@ -113,9 +132,11 @@ Before you can use claude-container, check these:
 
 The project runs Claude Code in a special mode called YOLO mode. This mode skips some security checks so Claude Code can run more freely. But claude-container keeps this inside the Apple Container so your Mac stays safe.
 
-Your files and projects live directly on your Mac but are connected to the container. This way, your work is saved even if you stop the container.
+Each container is **anchored to one folder on your Mac**. Whatever folder you were in when you first ran `ccr` for that container becomes its `/workspace` mount — and the container remembers it. Your files live directly on your Mac (right where they already were), and Claude Code edits them from inside the container. Your work is saved even when the container is stopped or removed.
 
-Using the Justfile means you do not have to type long commands. Just type `just` followed by what you want to do.
+The container name comes from the folder name by default (e.g. `~/my-repo` → container `claude-my-repo`), so the mapping is easy to remember. You can override it with an explicit name when you need to.
+
+Using `ccr` (or the Justfile underneath it) means you don't have to type long Docker commands. Just type `ccr` followed by what you want to do.
 
 ---
 
@@ -125,7 +146,7 @@ Inside the container, you will find:
 
 - Claude Code ready to run in YOLO mode  
 - Command line interfaces for starting and managing the container  
-- Project folder bind-mounted to your Mac to keep files persistent  
+- Your current folder bind-mounted as `/workspace`, so files stay on your Mac  
 - Setup tools for easy login and environment configuration  
 
 These tools let you work with Claude Code easily and securely.
@@ -134,33 +155,45 @@ These tools let you work with Claude Code easily and securely.
 
 ## 🔄 Managing your containers
 
-- **Stopping your container:**  
-  Run:  
-  ```
-  just stop my-project
-  ```  
+Run these from inside the folder a container is anchored to, and you can leave the name off — `ccr` will pick the right container automatically. Or pass an explicit name as the last argument.
 
-- **Restarting your container:**  
+- **List all containers (and the folder each one is anchored to):**  
   ```
-  just start my-project
-  ```  
-
-- **Removing your container:** If you want to remove a project completely (including files), make sure you back up your work first. Then run:  
-  ```
-  just remove my-project
+  ccr list
   ```
 
-Replacing `my-project` with your chosen project name in all commands.
+- **Stop your container** (frees memory and CPU, files stay safe):  
+  ```
+  ccr stop                  # cwd-anchored
+  ccr stop my-name          # explicit name
+  ```
+
+- **Restart your container:**  
+  ```
+  ccr start
+  ```
+
+- **Open a shell inside the container** (instead of Claude):  
+  ```
+  ccr shell
+  ```
+
+- **Destroy a container** (removes the container only — your folder on the Mac is **not** touched):  
+  ```
+  ccr destroy
+  ```
+  Files in the anchored folder remain on your Mac. Back up anything important before destroying if you're unsure.
 
 ---
 
 ## 💡 Tips for smooth use
 
 - Keep Apple Container updated for best performance.  
-- Always back up important project files outside the container.  
-- Use simple names without spaces for your projects.  
-- If you update your API key or login, recreate the container.  
-- Use Terminal Finder or Spotlight to open Terminal quickly.  
+- Always back up important project files (they live on your Mac in the folder you anchored the container to).  
+- Folder names with simple characters work best as container names — if a folder has weird characters, pass an explicit name with `ccr claude my-name`.  
+- `ccr list` shows every container and the host folder it's anchored to — handy when you forget which container goes with which project.  
+- If you `cd` to a folder and `ccr` complains about a collision, it means a container with that name is already anchored somewhere else. Use an explicit name to avoid the conflict.  
+- If you update your API key or re-login, you may need to `ccr destroy` and let the next `ccr claude` recreate the container.  
 
 ---
 

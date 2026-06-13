@@ -74,3 +74,17 @@ config/
   - Overlay survives `ccr stop`/`start`; wiped on `ccr destroy`.
 - Paths NOT in `.ccrignore` pass through `ccr-fuse` to `/workspace-real`. Edits to source files propagate to the host as expected.
 - Init runs as root (UID 0) for `/dev/fuse` access; `container exec -u coder` on all interactive recipes (`shell`, `login`, `claude`, `claude-safe`) so user sessions run as `coder`. `ccr-fuse` mounts with `allow_other`, and `/etc/fuse.conf` has `user_allow_other` enabled in the image.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for this repo (`robsman/claude-container`). Skills use the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context repo — one `CONTEXT.md` + `docs/adr/` at repo root (produced lazily by `/grill-with-docs`). See `docs/agents/domain.md`.

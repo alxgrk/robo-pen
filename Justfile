@@ -68,6 +68,11 @@ _ensure name=host_name:
     #!/usr/bin/env bash
     set -euo pipefail
     if ! container list -a -q | grep -qx "{{prefix}}{{name}}"; then
+        # Decide which image to use. If the workspace has .ccr/config.yaml
+        # or .ccr/Dockerfile, compose a per-project image; else fall back
+        # to the global claude-container default.
+        IMAGE_TAG=$( {{justfile_directory()}}/scripts/build-project-image.sh "{{host_dir}}" "{{prefix}}{{name}}" )
+        IMAGE_TAG=${IMAGE_TAG:-{{image}}}
         container create \
             --name {{prefix}}{{name}} \
             --cap-add SYS_ADMIN \
@@ -76,9 +81,9 @@ _ensure name=host_name:
             -l ccr.managed=true \
             -e ANTHROPIC_API_KEY \
             -v "{{host_dir}}:/workspace-real" \
-            {{image}} \
+            "$IMAGE_TAG" \
             /usr/local/bin/ccr-init.sh > /dev/null
-        echo "Auto-created container {{prefix}}{{name}} -> {{host_dir}}" >&2
+        echo "Auto-created container {{prefix}}{{name}} -> {{host_dir}} (image $IMAGE_TAG)" >&2
     else
         recorded=$(container inspect {{prefix}}{{name}} 2>/dev/null | jq -r '.[0].configuration.labels["ccr.host_path"] // empty')
         if [ -n "$recorded" ] && [ "$recorded" != "{{host_dir}}" ]; then
@@ -103,6 +108,8 @@ create name=host_name *CONTAINER_ARGS:
         echo "Container {{prefix}}{{name}} already exists. Use 'ccr destroy {{name}}' first."
         exit 1
     fi
+    IMAGE_TAG=$( {{justfile_directory()}}/scripts/build-project-image.sh "{{host_dir}}" "{{prefix}}{{name}}" )
+    IMAGE_TAG=${IMAGE_TAG:-{{image}}}
     container create \
         --name {{prefix}}{{name}} \
         --cap-add SYS_ADMIN \
@@ -112,9 +119,9 @@ create name=host_name *CONTAINER_ARGS:
         -e ANTHROPIC_API_KEY \
         -v "{{host_dir}}:/workspace-real" \
         {{CONTAINER_ARGS}} \
-        {{image}} \
+        "$IMAGE_TAG" \
         /usr/local/bin/ccr-init.sh
-    echo "Container {{prefix}}{{name}} created. Workspace: {{host_dir}}"
+    echo "Container {{prefix}}{{name}} created. Workspace: {{host_dir}} (image $IMAGE_TAG)"
 
 # Start a stopped container
 start name=host_name:

@@ -43,16 +43,19 @@ ccr cp-from <name> <src> <dest>
 ## Architecture
 
 ```
-Dockerfile              — multi-stage: builds ccr-fuse (Go) then composes runtime image (Debian bookworm + Node 22 + Python/uv + R + DuckDB + Claude Code + fuse3)
+Dockerfile.base         — ccr-base: minimal debian + fuse3 + ccr-fuse + ccr-init.sh + coder user
+Dockerfile              — claude-container (FROM ccr-base) + Node 22 + Python/uv + R + DuckDB + Claude CLI; default project image
 Justfile                — recipes; containers named claude-<name>; bind mount = invocation_directory()
 ccr                     — wrapper that invokes just WITHOUT --working-directory, so just sees the caller's cwd
-ccr-fuse/               — Go source for the rule-aware FUSE driver (main.go, host_node.go, rules.go, tests/)
+ccr-fuse/               — Go source: FUSE driver (host_node.go, rules.go) + lint (lint.go) + config parser (config.go); tests/ for integration sh
+scripts/
+  build-project-image.sh — composes the per-project image (ccr overlay onto image: ref or .ccr/Dockerfile output)
 config/
   CLAUDE.md             — baked into image at /home/coder/.claude/CLAUDE.md (Claude's in-container instructions)
   claude-settings.json  — baked into image at /home/coder/.claude/settings.json (bypassPermissions + full allow list)
   ccr-init.sh           — baked into image at /usr/local/bin/ccr-init.sh; runs as PID 1; execs ccr-fuse
 .env.example            — template for ANTHROPIC_API_KEY
-.ccr.example/shadow      — template for .ccr/shadow (gitignore-style patterns)
+.ccr.example/shadow     — template for .ccr/shadow (gitignore-style patterns)
 ```
 
 **Key design points:**
@@ -66,7 +69,8 @@ config/
 - Auth is either `ccr login` (subscription, survives stop/start but not destroy) or `ANTHROPIC_API_KEY` in `.env` (loaded via `set dotenv-load` in Justfile, passed as env var at container creation)
 - `ccr create <name> -- <container-args>` passes extra `container` CLI flags (e.g., extra volume mounts, port bindings)
 - `ccr` defaults to `~/repos/claude-container`; override with `CLAUDE_CONTAINER_DIR`
-- `build`/`rebuild` use `{{justfile_directory()}}` as the build context (not `.`), so they work regardless of where `ccr` was invoked
+- `build-base` builds the foundational `ccr-base` image; `build` builds the default `claude-container` image (FROM ccr-base). Both use `{{justfile_directory()}}` as the build context so they work regardless of where `ccr` was invoked. `rebuild` no-caches both layers.
+- **Per-project images** (ADR-0006): if a workspace has `.ccr/config.yaml` (with `image:` or `build:`) or a `.ccr/Dockerfile`, the `_ensure` / `create` recipes call `scripts/build-project-image.sh` to compose a ccr-overlay image tagged `<container-name>:latest-ccr` and use it instead of the global default. The overlay layer is templated dynamically: it installs `fuse3`, enables `user_allow_other`, validates / creates the configured user, mkdir's `/var/lib/ccr` at 0700, and COPYs `ccr-fuse` + `ccr-init.sh` from the locally-tagged `ccr-base`. The `user:` field in config defaults to `coder`; explicit values must exist in the base image, be uid ≠ 0, and have no sudoers entry — image build fails otherwise.
 - **Shadow filtering via `.ccr/shadow`** (`ccr-fuse` driven, launched by `ccr-init.sh` at PID 1): containers are created with `--cap-add SYS_ADMIN --user 0`. The init script execs `ccr-fuse --backing /workspace-real --shadow /var/lib/ccr/shadow --mount /workspace --rules /workspace-real/.ccr/shadow`. `.ccr/shadow` uses a strict subset of gitignore syntax (one pattern per line; `*`, `**`, `?`, `[…]`, leading `/` or any mid-`/` anchors to root, trailing `/` for directory-only; no negation). For every path that matches a pattern:
   - Host's matching content is INVISIBLE in the container (`stat` returns ENOENT).
   - Container creates/writes/deletes go to `/var/lib/ccr/shadow/<rel-path>` — NEVER to the host bind.

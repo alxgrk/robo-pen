@@ -30,8 +30,9 @@ Requires Apple Silicon + macOS 26+.
 git clone https://github.com/robsman/claude-container.git ~/repos/claude-container
 cd ~/repos/claude-container
 ./ccr setup           # installs Apple Container + jq, starts the service
-./ccr build           # builds the runtime image (multi-stage; takes a few minutes)
-./ccr build-host      # cross-builds the host-side ccr-fuse binary (used by `ccr lint`)
+./ccr build-base      # builds the ccr-base image (small; required for any project image)
+./ccr build           # builds the default claude-container image
+./ccr build-host      # cross-builds the host-side ccr-fuse binary (used by `ccr lint` + project image builds)
 ```
 
 Then put `ccr` on your `PATH` (symlink it into `/usr/local/bin` or add the repo dir to `PATH`). If you cloned somewhere other than `~/repos/claude-container`, set `CLAUDE_CONTAINER_DIR` to the actual path.
@@ -125,11 +126,48 @@ Exit code 1 if any error-status lines — usable as a pre-commit hook or CI chec
 
 ---
 
+## Per-project images
+
+The default workspace image is `claude-container` (Node 22 + Python+uv + R + DuckDB + just + Claude CLI). If you want a different base — a Python-only image, a different Node version, your own pre-built tooling — drop a `.ccr/config.yaml` in your workspace.
+
+### Pull a pre-built image
+```yaml
+# .ccr/config.yaml
+image: python:3.12-slim-bookworm
+```
+On first `ccr claude` ccr composes a thin layer onto the image (fuse3, ccr-fuse, mount points, user) and tags the result `claude-<basename>:latest-ccr`. Subsequent starts reuse the composed image.
+
+### Build locally from your own Dockerfile
+```yaml
+# .ccr/config.yaml
+build:
+  context: .                # relative to .ccr/
+  dockerfile: Dockerfile
+  args:
+    NODE_VERSION: "22"
+```
+…or, equivalent shorthand without a config file: just drop a `.ccr/Dockerfile`. ccr will build it and apply the overlay.
+
+### Adopt an existing user from the base image
+Some images establish their own user (`node:22-bookworm` has a `node` user, etc.). Adopt it via:
+```yaml
+image: node:22-bookworm
+user: node
+```
+The overlay validates the user exists in the base image, has uid ≠ 0, and is not listed in any sudoers file. If any check fails, the image build fails loudly. Default (no `user:` set) creates a fresh `coder` user.
+
+### Constraints
+- Base image must be Debian/Ubuntu-derived (the overlay installs `fuse3` via apt). Alpine bases need a v2 with apk support — not in the v1 surface.
+- `.ccr/config.yaml` recognised keys: `image`, `build` (with `context`, `dockerfile`, `args`), `user`. Anything else parse-errors with line numbers — `depends_on`, `ports`, `environment`, etc. are explicitly not supported yet.
+- Workspaces without a `.ccr/config.yaml` and without a `.ccr/Dockerfile` use the default `claude-container` image, same as before.
+
+---
+
 ## What happens inside the container
 
-- You run as `coder` (uid 1000), **no sudo**. System packages must be added at image-build time on the host (edit `Dockerfile`, run `ccr rebuild`).
+- You run as the configured user (default `coder` uid 1000), **no sudo**. System packages must be added at image-build time (edit `Dockerfile` or your per-project `.ccr/Dockerfile`, run `ccr rebuild`).
 - `/workspace` is a FUSE mount served by `ccr-fuse`. Passthrough paths reach the host bind; shadowed paths live in a container-local store.
-- Available tools: `git`, `python3 + uv`, `node 22`, `R`, `DuckDB`, `just`, `build-essential`, `claude`.
+- Default-image tools: `git`, `python3 + uv`, `node 22`, `R`, `DuckDB`, `just`, `build-essential`, `claude`. Per-project images get whatever their base provides (plus the ccr overlay essentials).
 - Auth: `ccr login` (subscription) or `ANTHROPIC_API_KEY` in a `.env` next to the Justfile.
 
 ---
@@ -150,19 +188,23 @@ What this means concretely: if you list `.env.local` in `.ccr/shadow`, the conte
 ## Architecture
 
 ```
-Dockerfile               multi-stage: golang builder + debian runtime + fuse3 + ccr-fuse
-Justfile                 ccr recipes (build / build-host / create / start / claude / lint / ...)
+Dockerfile.base          ccr-base: debian-slim + fuse3 + ccr-fuse + ccr-init.sh + coder
+Dockerfile               claude-container (FROM ccr-base) + Node/Python/R/DuckDB/just/Claude CLI
+Justfile                 ccr recipes (build-base / build / build-host / create / start / claude / lint / ...)
 ccr                      thin wrapper; dispatches lint locally, everything else via just
-ccr-fuse/                Go source for the FUSE driver + lint subcommand + tests
+ccr-fuse/                Go source: FUSE driver + lint + config (compose-subset YAML) + tests
+scripts/
+  build-project-image.sh project-image overlay builder (called by _ensure / create)
 config/
-  CLAUDE.md              in-container guidance (baked into the image)
+  CLAUDE.md              in-container guidance (baked into the default image)
   claude-settings.json   in-container Claude settings (bypassPermissions allowlist)
   ccr-init.sh            PID 1: sets up the shadow boundary, execs ccr-fuse
 docs/
   adr/                   architecture decision records
   agents/                config for matt-pocock-style engineering skills
-CONTEXT.md               domain vocabulary (Shadow, Shadow store, Passthrough, ...)
-.ccr.example/shadow       copy-paste-ready .ccr/shadow template
+CONTEXT.md               domain vocabulary (Shadow, Project image, ccr overlay, ...)
+.ccr.example/
+  shadow                 copy-paste-ready .ccr/shadow template
 ```
 
 See `CLAUDE.md` for the developer-facing summary and `CONTEXT.md` for the vocabulary used across docs and code.

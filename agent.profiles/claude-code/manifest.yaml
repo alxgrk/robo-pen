@@ -1,0 +1,12 @@
+name: claude-code
+description: Anthropic Claude Code CLI
+env: [ANTHROPIC_API_KEY]
+files:
+  - src: settings/settings.json
+    dst: /home/{{user}}/.claude/settings.json
+instructions_dst: /home/{{user}}/.claude/CLAUDE.md
+entrypoints:
+  install: install.sh
+  run: run.sh
+  run_gated: run-gated.sh
+  login: login.sh

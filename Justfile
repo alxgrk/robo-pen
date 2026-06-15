@@ -167,26 +167,26 @@ restart name=host_name:
 shell name=host_name: (_ensure name)
     container exec -it -u coder {{prefix}}{{name}} bash
 
-# Log in to Claude with your subscription (opens a URL to authenticate)
+# Log in to the agent (Claude subscription flow opens a URL to authenticate)
 login name=host_name: (_ensure name)
-    container exec -it -u coder {{prefix}}{{name}} claude login
+    container exec -it -u coder {{prefix}}{{name}} /usr/local/lib/ccr/login.sh
 
-# Run Claude in YOLO mode (auto-creates / auto-starts, optional prompt)
+# Run the agent in YOLO mode (auto-creates / auto-starts, optional prompt)
 claude name=host_name *PROMPT: (_ensure name)
     #!/usr/bin/env bash
     if [ -n "{{PROMPT}}" ]; then
-        container exec -it -u coder {{prefix}}{{name}} claude --dangerously-skip-permissions -p "{{PROMPT}}"
+        container exec -it -u coder {{prefix}}{{name}} /usr/local/lib/ccr/run.sh -p "{{PROMPT}}"
     else
-        container exec -it -u coder {{prefix}}{{name}} claude --dangerously-skip-permissions
+        container exec -it -u coder {{prefix}}{{name}} /usr/local/lib/ccr/run.sh
     fi
 
-# Run Claude in normal (permission-prompting) mode
+# Run the agent in permission-gated (prompt-on-tool-use) mode
 claude-safe name=host_name *PROMPT: (_ensure name)
     #!/usr/bin/env bash
     if [ -n "{{PROMPT}}" ]; then
-        container exec -it -u coder {{prefix}}{{name}} claude -p "{{PROMPT}}"
+        container exec -it -u coder {{prefix}}{{name}} /usr/local/lib/ccr/run-gated.sh -p "{{PROMPT}}"
     else
-        container exec -it -u coder {{prefix}}{{name}} claude
+        container exec -it -u coder {{prefix}}{{name}} /usr/local/lib/ccr/run-gated.sh
     fi
 
 # Copy files from host to container

@@ -71,3 +71,13 @@ _Avoid_: profile config, profile spec.
 **Composed instructions**:
 The file written by the overlay at the profile's `instructions_dst` (e.g. `/home/coder/.claude/CLAUDE.md` for claude-code). Composed at build time by concatenating `/etc/rp/instructions/*.md` in lexical order: `00-container.md` (from rp-base), `10-toolchain.md` (from the project image), `20-agent.md` (the profile's `instructions.md`), and optionally `30-workspace.md` (from a workspace's `.rp/instructions.md`).
 _Avoid_: agent prompt, CLAUDE.md (too specific).
+
+### FUSE correctness model
+
+**Shadow phase**:
+The high bit (`1<<63`) XOR'd into every shadow-tree node's `StableAttr.Ino` reported to the kernel. Keeps backing-tree and shadow-tree inodes from sharing the same cache identity even when their underlying filesystem inode numbers collide. See ADR-0008.
+_Avoid_: shadow bit, namespace bit.
+
+**Caller ownership**:
+The contract that files created via the FUSE driver in the shadow store are chowned to the FUSE caller's uid/gid immediately after the underlying syscall, rather than left owned by the FUSE process itself (which runs as root). Required so subsequent caller-owned operations like `fchmod` succeed in the kernel without reaching FUSE. See ADR-0008.
+_Avoid_: caller chown (this is the implementation), per-request setuid.

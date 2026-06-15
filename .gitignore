@@ -2,6 +2,9 @@ projects/
 .env
 .DS_Store
 .claude/
+# rp's own workspace dir, in case someone (or a buggy test) `rp init`s
+# inside the rp repo itself. Never relevant to commit.
+.rp/
 
 # Locally-built rp-fuse binaries (built into the image via multi-stage Dockerfile,
 # and cross-built for the host to power `ccr lint`).

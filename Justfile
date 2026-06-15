@@ -100,6 +100,11 @@ build-host:
 test-host: build-host
     bash {{justfile_directory()}}/rp-fuse/tests/run-host-tests.sh
 
+# Run the full integration suite — builds probe containers, exercises every
+# invariant from ADR-0008. Slow (~minutes); needs Apple Container running.
+test-integration: build-host
+    bash {{justfile_directory()}}/tests/integration/run-all.sh
+
 # ── Workspace bootstrap ───────────────────────────────────────────
 
 # Initialize .rp/ in the current workspace from .rp.example/.

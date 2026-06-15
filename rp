@@ -4,13 +4,17 @@
 
 set -euo pipefail
 
-# Set this to wherever you cloned robo-pen, or override with the environment
-# variable ROBO_PEN_DIR.
-ROBO_PEN_DIR="${ROBO_PEN_DIR:-$HOME/repos/robo-pen}"
+# Default ROBO_PEN_DIR to the directory this script lives in. Resolves
+# symlinks (so symlinking ~/bin/rp -> /path/to/robo-pen/rp still finds the
+# Justfile). Export ROBO_PEN_DIR to override, e.g. for development checkouts
+# or running multiple copies side-by-side.
+SCRIPT_PATH="${(%):-%x}"
+SCRIPT_PATH="${SCRIPT_PATH:A}"
+ROBO_PEN_DIR="${ROBO_PEN_DIR:-${SCRIPT_PATH:h}}"
 
 if [[ ! -f "$ROBO_PEN_DIR/Justfile" ]]; then
-    echo "Error: robo-pen not found at $ROBO_PEN_DIR" >&2
-    echo "Set ROBO_PEN_DIR to the correct path." >&2
+    echo "Error: robo-pen Justfile not found at $ROBO_PEN_DIR" >&2
+    echo "Either move the rp script into the robo-pen repo, or export ROBO_PEN_DIR=<path-to-repo>." >&2
     exit 1
 fi
 

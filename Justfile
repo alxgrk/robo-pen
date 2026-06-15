@@ -74,7 +74,7 @@ build-base: builder-ensure
         -t rp-base \
         {{justfile_directory()}}
 
-# Build the default robo-pen-default image (rp-base + Node/Python/R/DuckDB/just/Claude CLI)
+# Build the default robo-pen-default image (rp-base + Node/Python/R/DuckDB/just); no agent baked in
 build: build-base
     container build -t {{image}} {{justfile_directory()}}
 

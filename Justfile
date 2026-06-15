@@ -11,6 +11,13 @@ host_name := file_name(invocation_directory())
 # does not exist yet (e.g. before `rp build-host` on a fresh checkout).
 agent := shell(justfile_directory() + "/rp-fuse/rp-fuse-darwin-arm64 config --file " + invocation_directory() + "/.rp/config.yaml field agent 2>/dev/null || echo claude-code")
 
+# Container user for THIS workspace. Same resolution path as `agent`: ask
+# the rp-fuse host binary for the .rp/config.yaml user field, default to
+# coder when unset. Used by interactive recipes (shell/login/run) so they
+# exec as the actual configured user — important when the workspace adopts
+# an image's user (e.g. node) instead of creating a fresh coder.
+user := shell("u=$(" + justfile_directory() + "/rp-fuse/rp-fuse-darwin-arm64 config --file " + invocation_directory() + "/.rp/config.yaml field user 2>/dev/null || true); echo ${u:-coder}")
+
 # Container prefix is workspace-agent-specific:
 #   rp-<agent>-<basename>      e.g. rp-claude-code-myrepo, rp-opencode-myrepo
 prefix := "rp-" + agent + "-"
@@ -230,17 +237,17 @@ restart name=host_name:
 
 # Open a shell (auto-creates / auto-starts as needed)
 shell name=host_name: (_ensure name)
-    container exec -it -u coder {{prefix}}{{name}} bash
+    container exec -it -u {{user}} {{prefix}}{{name}} bash
 
 # Log in to the agent (Claude subscription flow opens a URL to authenticate)
 login name=host_name: (_ensure name)
     #!/usr/bin/env bash
     set -euo pipefail
-    if ! container exec -u coder {{prefix}}{{name}} test -x /usr/local/lib/rp/login.sh 2>/dev/null; then
+    if ! container exec -u {{user}} {{prefix}}{{name}} test -x /usr/local/lib/rp/login.sh 2>/dev/null; then
         echo "agent profile has no login flow" >&2
         exit 1
     fi
-    container exec -it -u coder {{prefix}}{{name}} /usr/local/lib/rp/login.sh
+    container exec -it -u {{user}} {{prefix}}{{name}} /usr/local/lib/rp/login.sh
 
 # Run the agent. Default mode = bypass-permissions (the container is the
 # safety boundary). Pass --gated as the FIRST positional arg to dispatch to
@@ -253,12 +260,12 @@ run name=host_name *ARGS: (_ensure name)
     if [ "${args[0]:-}" = "--gated" ]; then
         script=/usr/local/lib/rp/run-gated.sh
         args=( "${args[@]:1}" )
-        if ! container exec -u coder {{prefix}}{{name}} test -x "$script" 2>/dev/null; then
+        if ! container exec -u {{user}} {{prefix}}{{name}} test -x "$script" 2>/dev/null; then
             echo "agent profile is bypass-only (no run-gated.sh)" >&2
             exit 1
         fi
     fi
-    container exec -it -u coder {{prefix}}{{name}} "$script" "${args[@]}"
+    container exec -it -u {{user}} {{prefix}}{{name}} "$script" "${args[@]}"
 
 # Copy files from host to container
 cp-to name src dest:

@@ -147,6 +147,11 @@ _ensure name=host_name:
         # build:, .rp/Dockerfile, or the global default).
         IMAGE_TAG=$( {{justfile_directory()}}/scripts/build-project-image.sh "{{host_dir}}" "{{prefix}}{{name}}" )
         eval "$( {{justfile_directory()}}/scripts/resolve-create-args.sh "{{host_dir}}" )"
+        if [[ "${CREATE_FLAGS}" != *--memory* ]]; then
+            echo "rp: warning — no resources.memory set in .rp/config.yaml; Apple Container's 1G default" >&2
+            echo "    is enough for the agent shell but tight for typical builds (npm install, cargo, pip)." >&2
+            echo "    Add resources.memory: 8G to .rp/config.yaml + 'rp destroy && rp create' to raise it." >&2
+        fi
         container create \
             --name {{prefix}}{{name}} \
             --cap-add SYS_ADMIN \
@@ -186,6 +191,11 @@ create name=host_name *CONTAINER_ARGS:
     fi
     IMAGE_TAG=$( {{justfile_directory()}}/scripts/build-project-image.sh "{{host_dir}}" "{{prefix}}{{name}}" )
     eval "$( {{justfile_directory()}}/scripts/resolve-create-args.sh "{{host_dir}}" )"
+    if [[ "${CREATE_FLAGS}" != *--memory* ]]; then
+        echo "rp: warning — no resources.memory set in .rp/config.yaml; Apple Container's 1G default" >&2
+        echo "    is enough for the agent shell but tight for typical builds (npm install, cargo, pip)." >&2
+        echo "    Add resources.memory: 8G to .rp/config.yaml + 'rp destroy && rp create' to raise it." >&2
+    fi
     container create \
         --name {{prefix}}{{name}} \
         --cap-add SYS_ADMIN \

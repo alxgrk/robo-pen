@@ -37,6 +37,26 @@ fi
 mkdir -p "$MNT" "$BACKING" "$SHADOW"
 chmod 0700 /var/lib/rp
 
+# Re-assert the shadow-boundary invariants (ADR-0005 / ADR-0008 invariant 3):
+# the configured container user must exist, have uid != 0, and not be listed
+# in any sudoers file. The overlay build enforces the same checks; this is
+# belt-and-braces against (a) a build path that slips a privileged user
+# through, (b) a sudoers edit that landed between build and start.
+if [ -n "${RP_USER:-}" ]; then
+    if ! id -u "$RP_USER" >/dev/null 2>&1; then
+        echo "rp-init: configured RP_USER '$RP_USER' does not exist in image; refusing to launch" >&2
+        exec sleep infinity
+    fi
+    if [ "$(id -u "$RP_USER")" = "0" ]; then
+        echo "rp-init: configured RP_USER '$RP_USER' has uid 0; refusing to launch (shadow boundary requires uid != 0)" >&2
+        exec sleep infinity
+    fi
+    if grep -rqE "(^|[[:space:]])${RP_USER}([[:space:]]|$)" /etc/sudoers /etc/sudoers.d/ 2>/dev/null; then
+        echo "rp-init: configured RP_USER '$RP_USER' has a sudoers entry; refusing to launch (shadow boundary requires no sudo)" >&2
+        exec sleep infinity
+    fi
+fi
+
 # If a prior init left an FUSE mount around, drop it.
 if mountpoint -q "$MNT"; then
     fusermount3 -u "$MNT" 2>/dev/null || umount -l "$MNT" 2>/dev/null

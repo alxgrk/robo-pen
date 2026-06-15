@@ -43,6 +43,15 @@ if [ -x "$RP_FUSE" ] && [ -f "$CONFIG" ]; then
     fi
 fi
 
+# Forward the configured container user so rp-init.sh can re-validate the
+# shadow-boundary invariants (uid != 0, not in sudoers) at runtime — ADR-0008
+# invariant 3 belt-and-braces.
+if [ -x "$RP_FUSE" ]; then
+    RP_USER_CFG=$("$RP_FUSE" config --file "$CONFIG" field user 2>/dev/null || echo "")
+    RP_USER_VAL=${RP_USER_CFG:-coder}
+    CONTAINER_ENV="$CONTAINER_ENV -e RP_USER=$RP_USER_VAL"
+fi
+
 # Forward RP_DEBUG if set in the host shell. Lets the user diagnose a
 # specific session without baking debug into config: `RP_DEBUG=1 rp run`.
 if [ "${RP_DEBUG:-}" = "1" ]; then

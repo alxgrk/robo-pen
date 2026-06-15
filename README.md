@@ -175,13 +175,24 @@ build:
 ```
 …or, equivalent shorthand without a config file: just drop a `.rp/Dockerfile`. rp will build it and apply the overlay.
 
-### Adopt an existing user from the base image
-Some images establish their own user (`node:22-bookworm` has a `node` user, etc.). Adopt it via:
+### Pick the container user
+Default is `coder` (uid auto-assigned by useradd). Override via `user:` to either adopt an existing user from the base image or create a different name:
+
 ```yaml
+# Adopt the existing `node` user shipped by node:22-bookworm.
 image: node:22-bookworm
 user: node
 ```
-The overlay validates the user exists in the base image, has uid ≠ 0, and is not listed in any sudoers file. If any check fails, the image build fails loudly. Default (no `user:` set) creates a fresh `coder` user.
+
+```yaml
+# Devcontainer images often ship a privileged `node` user (with sudo).
+# Setting user: coder makes the overlay create a fresh non-privileged
+# coder user — the rp security boundary needs uid != 0 + no sudoers.
+image: mcr.microsoft.com/devcontainers/javascript-node:22
+user: coder
+```
+
+The overlay tries `useradd` and falls through to the existing user if `id -u <name>` already succeeds. Either way, the build fails if the chosen user has uid 0 or any sudoers entry.
 
 ### Quick start from the template
 ```bash

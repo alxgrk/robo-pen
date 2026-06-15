@@ -43,7 +43,7 @@ The thin layer always applied on top of a user's chosen image. Validates (or cre
 _Avoid_: rp layer, decorator layer.
 
 **Container user**:
-The unprivileged identity the container runs interactive sessions as. Defaults to `coder` (uid 1000, created by the rp overlay). May be overridden via `.rp/config.yaml`'s `user:` field to adopt an existing user from the base image. rp enforces the invariant that this user has uid ≠ 0 and is not listed in any sudoers file; build fails otherwise.
+The unprivileged identity the container runs interactive sessions as. Defaults to `coder`, created by the rp overlay with an auto-assigned uid (≠ 0). May be overridden via `.rp/config.yaml`'s `user:` field — either adopting an existing user from the base image or naming a fresh user to be created. rp enforces the invariant that the chosen user has uid ≠ 0 and is not listed in any sudoers file; build fails otherwise.
 _Avoid_: workspace user, exec user.
 
 ### Agent profiles

@@ -21,7 +21,9 @@ We chose (2). The overlay is a small templated Dockerfile applied at build time;
 
 ## Container-user flexibility
 
-Some base images establish their own conventional user (`node:22` → `node`, etc.). v1 lets `.rp/config.yaml` set `user:` to adopt that user. When set, the overlay validates at build time that the named user exists, has uid ≠ 0, and is not listed in any sudoers file. Runtime re-validates. The unprivileged-user invariant of the shadow boundary (ADR-0005) is preserved regardless of which image the user picks.
+Some base images establish their own conventional user (`node:22` → `node`, etc.). `.rp/config.yaml`'s `user:` field selects the identity sessions run as. The overlay tries `useradd -m -s /bin/bash <name>` and falls through to the existing user if `id -u <name>` already succeeds — so either an image-defined user can be adopted, or a fresh user created when the image's existing user is unsuitable (e.g. devcontainer images ship a `node` user with sudo, which violates the shadow-boundary invariant in ADR-0005).
+
+After ensure-exists, the overlay still validates that the chosen user has uid ≠ 0 and is not listed in any sudoers file; if either check fails, the build fails loudly. Runtime re-validates. The unprivileged-user invariant is preserved regardless of which image the user picks. We deliberately do not pin uid 1000 — devcontainer images already use 1000 for their default user, so `useradd` is left to pick a free uid.
 
 ## Build pipeline
 

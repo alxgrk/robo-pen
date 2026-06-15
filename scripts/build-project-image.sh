@@ -148,16 +148,14 @@ fi
 
 INSTRUCTIONS_DST=$("$RP_FUSE" profile --workspace "$WORKSPACE" --repo-dir "$REPO_DIR" --agent "$AGENT" field instructions_dst || true)
 
-USER_EXIST_CHECK=""
-if [ -n "$RP_USER_CFG" ]; then
-    # User explicitly named in config: must exist in the base image (do not create).
-    USER_EXIST_CHECK="RUN id -u $RP_USER >/dev/null 2>&1 \\
-    || (echo \"rp-overlay: user '$RP_USER' does not exist in base image\" >&2; exit 1)"
-else
-    # Default coder: create if missing.
-    USER_EXIST_CHECK="RUN id -u $RP_USER >/dev/null 2>&1 \\
-    || useradd -m -s /bin/bash -u 1000 $RP_USER"
-fi
+# Ensure the configured user exists. If the base image already has them
+# (e.g. node:22-bookworm has `node`), useradd is skipped. Otherwise create
+# them with an auto-assigned uid — letting useradd pick avoids collisions
+# with existing uid 1000 in devcontainer-style images. The security
+# invariants (uid != 0, no sudoers entry) are enforced below regardless of
+# which branch ran; if the existing image user has sudo, build fails.
+USER_EXIST_CHECK="RUN id -u $RP_USER >/dev/null 2>&1 \\
+    || useradd -m -s /bin/bash $RP_USER"
 
 # Compose the overlay Dockerfile.
 {

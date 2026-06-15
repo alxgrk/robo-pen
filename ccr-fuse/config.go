@@ -20,13 +20,25 @@ import (
 
 // ProjectConfig is the parsed contents of `.ccr/config.yaml`. All fields are
 // optional; a fully empty config is valid and means "use the default base
-// image with the coder user".
+// image with the coder user and the claude-code agent profile".
 type ProjectConfig struct {
+	Agent     string        `yaml:"agent,omitempty"`
 	Image     string        `yaml:"image,omitempty"`
 	Build     *BuildSpec    `yaml:"build,omitempty"`
 	User      string        `yaml:"user,omitempty"`
 	Resources *ResourceSpec `yaml:"resources,omitempty"`
 	Fuse      *FuseSpec     `yaml:"fuse,omitempty"`
+}
+
+// DefaultAgent is the profile used when .ccr/config.yaml does not set `agent:`.
+const DefaultAgent = "claude-code"
+
+// AgentName returns the configured agent, falling back to DefaultAgent.
+func (c *ProjectConfig) AgentName() string {
+	if c.Agent == "" {
+		return DefaultAgent
+	}
+	return c.Agent
 }
 
 // BuildSpec holds the parameters for locally building a project image.
@@ -86,10 +98,15 @@ func parseProjectConfigBytes(data []byte) (*ProjectConfig, error) {
 }
 
 // Validate rejects configs that violate ccr's invariants. Does not touch the
-// filesystem — use ResolveContext separately for path checks.
+// filesystem — use ResolveContext / ResolveProfile separately for path checks.
 func (c *ProjectConfig) Validate() error {
 	if c.Image != "" && c.Build != nil {
 		return errors.New("config: cannot specify both `image:` and `build:` — choose one")
+	}
+	if c.Agent != "" {
+		if err := validateAgentName(c.Agent); err != nil {
+			return fmt.Errorf("config: agent: %w", err)
+		}
 	}
 	if c.User != "" {
 		if err := validateUserName(c.User); err != nil {
@@ -144,6 +161,27 @@ func validateMemorySize(s string) error {
 	}
 	if digits == "0" {
 		return errors.New("zero is not a valid size")
+	}
+	return nil
+}
+
+// validateAgentName checks that an agent: value is a syntactically plausible
+// agent profile identifier. Profile names are lowercase identifiers, used as
+// both directory names (agent.profiles/<name>) and config field values.
+func validateAgentName(a string) error {
+	if a == "" {
+		return errors.New("empty agent name")
+	}
+	for i, r := range a {
+		switch {
+		case r >= 'a' && r <= 'z':
+			continue
+		case r >= '0' && r <= '9' && i > 0:
+			continue
+		case r == '-' && i > 0:
+			continue
+		}
+		return fmt.Errorf("invalid character %q in agent name %q (lowercase, digits, hyphens; cannot start with digit or hyphen)", r, a)
 	}
 	return nil
 }

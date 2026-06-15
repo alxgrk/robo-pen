@@ -35,6 +35,9 @@ func main() {
 		case "config":
 			runConfig(os.Args[2:])
 			return
+		case "profile":
+			runProfile(os.Args[2:])
+			return
 		}
 	}
 

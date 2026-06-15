@@ -20,7 +20,9 @@ func runConfig(args []string) {
 		fmt.Fprintln(os.Stderr, "  show      print resolved fields, one per line")
 		fmt.Fprintln(os.Stderr, "  validate  parse + validate; exit 0 on success, 1 on error")
 		fmt.Fprintln(os.Stderr, "  field <name>")
-		fmt.Fprintln(os.Stderr, "            print one field (image | dockerfile | context | user)")
+		fmt.Fprintln(os.Stderr, "            print one field (image | dockerfile | context | user |")
+		fmt.Fprintln(os.Stderr, "                              agent | source | resources.memory |")
+		fmt.Fprintln(os.Stderr, "                              resources.cpus | fuse.cache)")
 	}
 	_ = fs.Parse(args)
 	if fs.NArg() < 1 {
@@ -61,6 +63,11 @@ func runConfig(args []string) {
 
 func showProjectConfig(c *ProjectConfig, path string) {
 	fmt.Printf("file: %s\n", path)
+	agent := c.AgentName()
+	if c.Agent == "" {
+		agent += " (default)"
+	}
+	fmt.Printf("agent: %s\n", agent)
 	fmt.Printf("image: %s\n", emptyDash(c.Image))
 	fmt.Printf("user: %s\n", emptyDash(c.User))
 	if c.Build != nil {
@@ -98,6 +105,8 @@ func projectConfigField(c *ProjectConfig, name string) (string, error) {
 	switch name {
 	case "image":
 		return c.Image, nil
+	case "agent":
+		return c.AgentName(), nil
 	case "user":
 		return c.User, nil
 	case "dockerfile":

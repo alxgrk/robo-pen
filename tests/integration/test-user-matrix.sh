@@ -59,4 +59,26 @@ image: mcr.microsoft.com/devcontainers/javascript-node:22
 user: node
 EOF' "fail"
 
+# Case 4: devcontainer + user: node + strip_sudo: true — should pass.
+# ADR-0009 opt-in: overlay strips node's sudo grant during build.
+run_case "devcontainer+node+strip_sudo" "matrix-strip-sudo" '
+cat <<EOF
+image: mcr.microsoft.com/devcontainers/javascript-node:22
+user: node
+strip_sudo: true
+EOF' "pass"
+
+# Verify post-strip the node user actually has no sudo.
+container start "$(container_name claude-code matrix-strip-sudo)" >/dev/null 2>&1 || fail "could not start strip-sudo container"
+out=$(container exec -u root "$(container_name claude-code matrix-strip-sudo)" sh -c '
+    grep -rE "(^|[[:space:]])node([[:space:]]|$)" /etc/sudoers /etc/sudoers.d/ 2>&1 || echo "(no match)"
+    id node
+' 2>&1)
+if ! grep -q "(no match)" <<<"$out"; then
+    fail "[devcontainer+node+strip_sudo] node still has a sudoers entry post-strip:\n$out"
+fi
+if grep -qE 'groups=.*\b(sudo|wheel)\b' <<<"$out"; then
+    fail "[devcontainer+node+strip_sudo] node still in sudo/wheel group post-strip:\n$out"
+fi
+
 echo "OK test-user-matrix"

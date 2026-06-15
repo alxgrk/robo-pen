@@ -109,6 +109,11 @@ func projectConfigField(c *ProjectConfig, name string) (string, error) {
 		return c.AgentName(), nil
 	case "user":
 		return c.User, nil
+	case "strip_sudo":
+		if c.StripSudo {
+			return "true", nil
+		}
+		return "", nil
 	case "dockerfile":
 		if c.Build == nil {
 			return "", nil

@@ -45,6 +45,20 @@
 #
 # user: node
 
+# ── strip_sudo (advanced) ──────────────────────────────────────────
+# Default false: rp refuses to use a user with any sudoers grant (the
+# shadow boundary in ADR-0005 requires the user to have no path to root).
+# Set strip_sudo: true to opt in to rp REMOVING the user's sudo grant
+# during the overlay build instead of refusing. Useful for devcontainer
+# images that ship their default user (e.g. `node`) with passwordless
+# sudo. The build still runs the post-strip sudoers grep, so a missed
+# grant path still fails the build — strip_sudo is best-effort, not a
+# trust-me override. See docs/adr/0009-opt-in-sudo-stripping.md.
+#
+# image: mcr.microsoft.com/devcontainers/javascript-node:22
+# user: node
+# strip_sudo: true
+
 # ── Container resources ────────────────────────────────────────────
 # Forwarded to `container create` as --memory / --cpus. Missing keys =
 # Apple Container's default of 1G per container — too low for `npm install`

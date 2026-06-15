@@ -22,10 +22,16 @@ import (
 // optional; a fully empty config is valid and means "use the default base
 // image with the coder user and the claude-code agent profile".
 type ProjectConfig struct {
-	Agent     string        `yaml:"agent,omitempty"`
-	Image     string        `yaml:"image,omitempty"`
-	Build     *BuildSpec    `yaml:"build,omitempty"`
-	User      string        `yaml:"user,omitempty"`
+	Agent string     `yaml:"agent,omitempty"`
+	Image string     `yaml:"image,omitempty"`
+	Build *BuildSpec `yaml:"build,omitempty"`
+	User  string     `yaml:"user,omitempty"`
+	// StripSudo opts the workspace into the rp overlay actively stripping
+	// sudoers entries from the configured user during the overlay build (see
+	// ADR-0009). Default is false: rp refuses to use a user with sudo. Set
+	// this true to keep an image's conventional user (e.g. `node` on the
+	// devcontainer javascript-node:22 image) while removing its sudo grant.
+	StripSudo bool          `yaml:"strip_sudo,omitempty"`
 	Resources *ResourceSpec `yaml:"resources,omitempty"`
 	Fuse      *FuseSpec     `yaml:"fuse,omitempty"`
 }

@@ -270,6 +270,39 @@ func TestProjectConfig_AgentPasses(t *testing.T) {
 	}
 }
 
+func TestProjectConfig_StripSudoDefault(t *testing.T) {
+	cfg, err := parseProjectConfigBytes([]byte("image: foo\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.StripSudo {
+		t.Errorf("strip_sudo should default to false")
+	}
+}
+
+func TestProjectConfig_StripSudoTrue(t *testing.T) {
+	cfg, err := parseProjectConfigBytes([]byte("image: foo\nuser: node\nstrip_sudo: true\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.StripSudo {
+		t.Errorf("strip_sudo: true should parse to true")
+	}
+}
+
+func TestProjectConfig_StripSudoFieldAccessor(t *testing.T) {
+	cfg, _ := parseProjectConfigBytes([]byte("strip_sudo: true\n"))
+	got, _ := projectConfigField(cfg, "strip_sudo")
+	if got != "true" {
+		t.Errorf("projectConfigField strip_sudo = %q, want \"true\"", got)
+	}
+	cfg, _ = parseProjectConfigBytes([]byte(""))
+	got, _ = projectConfigField(cfg, "strip_sudo")
+	if got != "" {
+		t.Errorf("projectConfigField strip_sudo (default) = %q, want empty", got)
+	}
+}
+
 func writeManifest(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

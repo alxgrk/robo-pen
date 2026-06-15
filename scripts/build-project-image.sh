@@ -49,6 +49,7 @@ DEFAULT_DOCKERFILE="$WORKSPACE/.rp/Dockerfile"
 AGENT=$("$RP_FUSE" config --file "$CONFIG" field agent 2>/dev/null || echo "claude-code")
 RP_USER_CFG=$("$RP_FUSE" config --file "$CONFIG" field user 2>/dev/null || echo "")
 RP_USER=${RP_USER_CFG:-coder}
+STRIP_SUDO=$("$RP_FUSE" config --file "$CONFIG" field strip_sudo 2>/dev/null || echo "")
 
 # Resolve the agent profile dir (workspace override > builtin).
 PROFILE_DIR=$("$RP_FUSE" profile --workspace "$WORKSPACE" --repo-dir "$REPO_DIR" --agent "$AGENT" resolve)
@@ -176,9 +177,30 @@ RUN sed -i 's/^#user_allow_other/user_allow_other/' /etc/fuse.conf 2>/dev/null \
 # Container user (default coder, or whatever .rp/config.yaml asked for).
 $USER_EXIST_CHECK
 
-# Hardening invariants per ADR-0006.
+# Hardening invariants per ADR-0005 / ADR-0008 invariant 3.
 RUN test "\$(id -u $RP_USER)" -ne 0 \\
     || (echo "rp-overlay: user '$RP_USER' is root, refusing" >&2; exit 1)
+EOF
+
+# strip_sudo (ADR-0009): if the workspace opted in, run a best-effort strip
+# of every sudo grant for the configured user BEFORE the ! grep sudoers
+# check. The check stays in place — if strip_sudo missed a path, the build
+# still fails with the existing refusal message.
+if [ "$STRIP_SUDO" = "true" ]; then
+    cat <<EOF
+# strip_sudo: opt-in (ADR-0009). Removes every common sudo grant for the
+# configured user. The post-strip sudoers grep below is the safety net.
+RUN rm -f /etc/sudoers.d/${RP_USER} 2>/dev/null || true
+RUN sed -i "/^${RP_USER}[[:space:]]/d" /etc/sudoers 2>/dev/null || true
+RUN for sd in /etc/sudoers.d/*; do \\
+        [ -f "\$sd" ] && sed -i "/^${RP_USER}[[:space:]]/d; /^%sudo[[:space:]]/d; /^%wheel[[:space:]]/d" "\$sd" 2>/dev/null || true; \\
+    done; true
+RUN gpasswd -d ${RP_USER} sudo 2>/dev/null || true
+RUN gpasswd -d ${RP_USER} wheel 2>/dev/null || true
+EOF
+fi
+
+cat <<EOF
 RUN ! grep -rqE "(^|[[:space:]])${RP_USER}([[:space:]]|\$)" /etc/sudoers /etc/sudoers.d/ 2>/dev/null \\
     || (echo "rp-overlay: user '$RP_USER' has a sudoers entry, refusing" >&2; exit 1)
 

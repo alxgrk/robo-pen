@@ -198,9 +198,14 @@ Smoke-test it with:
   docker run --rm -it \\
       --cap-add SYS_ADMIN \\
       --device /dev/fuse \\
+      --user 0 \\
       -v /tmp/rp-docker-probe:/workspace-real \\
       $OUT_TAG \\
       /usr/local/bin/rp-init.sh
+
+  # --user 0 overrides the image's \`USER $RP_USER\` directive so init can
+  # mount + chown /var/lib/rp. Without it, init runs as $RP_USER and fails
+  # at the mkdir/mount step.
 
 In another shell:
   docker exec -it -u $RP_USER <container-id> bash

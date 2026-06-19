@@ -19,10 +19,8 @@ A path NOT matched by any `.rp/shadow` rule. Reads and writes go to the host bin
 _Avoid_: passthrough mount (sounds like a filesystem feature), host-backed.
 
 **Workspace**:
-The container-visible `/workspace` directory. Composed by `rp-fuse` from passthrough paths (host-backed) plus shadowed paths (store-backed).
-
-**Workspace-real**:
-The raw host bind mount at `/workspace-real`. Implementation detail — the user / agent should not interact with it directly.
+The container-visible directory where the FUSE-shadowed view of the host workspace lives. Composed by `rp-fuse` from passthrough paths (host-backed) plus shadowed paths (store-backed). Normally `/workspace`; runtimes that don't use that convention (e.g. Docker Sandbox) get the workspace at the matching host path, discovered at init time — see ADR-0010.
+_Avoid_: host workspace, project directory (those name the host-side dir, not the container view).
 
 **Shadow rules**:
 The pattern set in `.rp/shadow` that determines which paths are shadowed. Syntax is a strict subset of `.gitignore`: same anchoring semantics (leading `/` and mid-slash both anchor to root), `*` / `**` / `?` / `[…]` globs, trailing `/` for directory-only. **Negation (`!pattern`) is NOT supported** and is silently skipped with a warning. The container sees the file but cannot modify it (writes return EROFS); only the host can edit the rules.

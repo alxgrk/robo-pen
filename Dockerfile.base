@@ -33,6 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         fuse3 \
         locales \
+        tini \
     && sed -i 's/^# *\(en_US.UTF-8\)/\1/' /etc/locale.gen \
     && locale-gen \
     && rm -rf /var/lib/apt/lists/*
@@ -62,8 +63,16 @@ COPY config/00-container.md /etc/rp/instructions/00-container.md
 RUN chmod 0755 /usr/local/bin/rp-fuse /usr/local/bin/rp-init.sh \
     && chown root:root /usr/local/bin/rp-init-bootstrap \
     && chmod 4755 /usr/local/bin/rp-init-bootstrap \
-    && mkdir -p /var/lib/rp/shadow /var/lib/rp/backing /workspace /workspace-real /usr/local/lib/rp \
+    && mkdir -p /var/lib/rp/shadow /workspace /usr/local/lib/rp \
     && chmod 0700 /var/lib/rp \
-    && chown root:root /var/lib/rp /var/lib/rp/shadow /var/lib/rp/backing
+    && chown root:root /var/lib/rp /var/lib/rp/shadow
 
 WORKDIR /workspace
+
+# Single entry path for every runtime (Apple Container, Docker, Docker
+# Sandbox). tini is PID 1 so the container has standard zombie-reaping +
+# signal forwarding, and so runtimes that expect tini-as-PID-1 (Docker
+# Sandbox does) see the lineage they expect. tini fork+exec's our setuid
+# bootstrap, which escalates to root, exec's rp-init.sh, exec's rp-fuse.
+# See ADR-0010.
+ENTRYPOINT ["tini", "--", "/usr/local/bin/rp-init-bootstrap"]

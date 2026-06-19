@@ -3,10 +3,10 @@
 The shadow mechanism is promoted from "ergonomic isolation" to a real security boundary against in-container code. Concretely:
 
 - **`coder` user loses passwordless sudo.** The Dockerfile no longer grants `coder ALL=(ALL) NOPASSWD:ALL`.
-- **`rp-init.sh` hides `/workspace-real` from the container's mount namespace.** Before `rp-fuse` starts, init binds `/workspace-real` → `/var/lib/rp/backing` (root-only, mode `0700`) and overlays a tmpfs on `/workspace-real` so default container view shows it empty.
-- **`/var/lib/rp/` is `0700 root:root`.** `coder` cannot traverse it, so symlinks crafted to escape into the backing path get EACCES.
+- **`rp-init.sh` hides the host bind from the container's mount namespace.** The host workspace is bind-mounted at `/workspace`; before `rp-fuse` starts, init captures an fd on that bind, then overlays a tmpfs and `rp-fuse` on top of `/workspace`. The user-visible filesystem at `/workspace` is the FUSE layer; the raw bind is reachable only via the captured fd (`/proc/self/fd/N`), held by `rp-fuse`. If `rp-fuse` fails or exits, the tmpfs layer remains as a fail-closed backstop (empty, not the raw bind). See ADR-0010 for the mount layout.
+- **`/var/lib/rp/` is `0700 root:root`.** `coder` cannot traverse it, so symlinks crafted to escape into the shadow store get EACCES.
 
-Verified by spike (2026-06-13): a `coder` exec'd process has `CapInh = CapPrm = CapEff = 0`. `umount` on the tmpfs returns EPERM. The backing bind is not visible to the user.
+Verified by spike (2026-06-13): a `coder` exec'd process has `CapInh = CapPrm = CapEff = 0`. `umount` on the FUSE / tmpfs / bind stack returns EPERM. The raw host bind is not visible to the user.
 
 Trade-off accepted:
 

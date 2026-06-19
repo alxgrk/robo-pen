@@ -167,15 +167,13 @@ _ensure name=host_name:
         container create \
             --name {{prefix}}{{name}} \
             --cap-add SYS_ADMIN \
-            --user 0 \
             -l "rp.host_path={{host_dir}}" \
             -l "rp.agent={{agent}}" \
             -l rp.managed=true \
             $CONTAINER_ENV \
             $CREATE_FLAGS \
-            -v "{{host_dir}}:/workspace-real" \
-            "$IMAGE_TAG" \
-            /usr/local/bin/rp-init.sh > /dev/null
+            -v "{{host_dir}}:/workspace" \
+            "$IMAGE_TAG" > /dev/null
         echo "Auto-created container {{prefix}}{{name}} -> {{host_dir}} (image $IMAGE_TAG${CREATE_FLAGS:+, $CREATE_FLAGS})" >&2
     else
         recorded=$(container inspect {{prefix}}{{name}} 2>/dev/null | jq -r '.[0].configuration.labels["rp.host_path"] // empty')
@@ -211,16 +209,14 @@ create name=host_name *CONTAINER_ARGS:
     container create \
         --name {{prefix}}{{name}} \
         --cap-add SYS_ADMIN \
-        --user 0 \
         -l "rp.host_path={{host_dir}}" \
         -l "rp.agent={{agent}}" \
         -l rp.managed=true \
         $CONTAINER_ENV \
         $CREATE_FLAGS \
-        -v "{{host_dir}}:/workspace-real" \
+        -v "{{host_dir}}:/workspace" \
         {{CONTAINER_ARGS}} \
-        "$IMAGE_TAG" \
-        /usr/local/bin/rp-init.sh
+        "$IMAGE_TAG"
     echo "Container {{prefix}}{{name}} created. Workspace: {{host_dir}} (image $IMAGE_TAG${CREATE_FLAGS:+, $CREATE_FLAGS})"
 
 # Start a stopped container

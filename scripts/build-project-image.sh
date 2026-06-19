@@ -121,7 +121,7 @@ fi
 # crash (entrypoint issue, libc mismatch, arch mismatch) reads as such
 # instead of masquerading as "wrong distro". Wrap in `if !` so set -e
 # doesn't kill us on the expected failure paths.
-if ! probe_err=$(container run --rm "$SOURCE_REF" sh -c '
+if ! probe_err=$(container run --rm --entrypoint=/bin/sh "$SOURCE_REF" -c '
     [ -f /etc/debian_version ] && exit 0
     command -v apt-get >/dev/null 2>&1 && exit 0
     echo "neither /etc/debian_version nor apt-get found" >&2
@@ -255,15 +255,23 @@ RUN if cat /etc/sudoers /etc/sudoers.d/* 2>/dev/null | sed 's/#.*//' \\
     fi
 
 # Mount points for the shadow boundary + agent entrypoint dir.
-RUN mkdir -p /var/lib/rp/shadow /var/lib/rp/backing /workspace /workspace-real /usr/local/lib/rp \\
+RUN mkdir -p /var/lib/rp/shadow /workspace /usr/local/lib/rp \\
     && chmod 0700 /var/lib/rp \\
-    && chown root:root /var/lib/rp /var/lib/rp/shadow /var/lib/rp/backing
+    && chown root:root /var/lib/rp /var/lib/rp/shadow
 
-# Pull rp-fuse + init script + container-fundamentals fragment from rp-base.
+# Pull rp-fuse + init script + setuid bootstrap + tini + container-fundamentals
+# fragment from rp-base. The unified ENTRYPOINT is `tini -- rp-init-bootstrap`
+# (ADR-0010); we COPY tini explicitly so the overlay works on user-supplied
+# bases that don't ship tini. Re-apply the setuid bit because COPY --from can
+# strip it on some Docker variants.
 COPY --from=rp-base /usr/local/bin/rp-fuse /usr/local/bin/rp-fuse
 COPY --from=rp-base /usr/local/bin/rp-init.sh /usr/local/bin/rp-init.sh
+COPY --from=rp-base /usr/local/bin/rp-init-bootstrap /usr/local/bin/rp-init-bootstrap
+COPY --from=rp-base /usr/bin/tini /usr/local/bin/tini
 COPY --from=rp-base /etc/rp/instructions/00-container.md /etc/rp/instructions/00-container.md
-RUN chmod 0755 /usr/local/bin/rp-fuse /usr/local/bin/rp-init.sh
+RUN chmod 0755 /usr/local/bin/rp-fuse /usr/local/bin/rp-init.sh /usr/local/bin/tini \\
+    && chown root:root /usr/local/bin/rp-init-bootstrap \\
+    && chmod 4755 /usr/local/bin/rp-init-bootstrap
 
 # ── Agent profile bundle ($AGENT, source: $PROFILE_SOURCE) ──
 COPY agent/instructions.md /etc/rp/instructions/20-agent.md
@@ -324,6 +332,12 @@ cat <<EOF
 
 WORKDIR /workspace
 USER $RP_USER
+
+# Re-assert the unified entry point. The overlay is the last layer applied
+# to the project image, so this ENTRYPOINT wins over any base-image or
+# user-Dockerfile ENTRYPOINT. See ADR-0010. tini is PID 1, our bootstrap
+# is its only child, escalates via setuid and exec's rp-init.sh.
+ENTRYPOINT ["/usr/local/bin/tini", "--", "/usr/local/bin/rp-init-bootstrap"]
 EOF
 } > "$OVERLAY_DOCKERFILE"
 

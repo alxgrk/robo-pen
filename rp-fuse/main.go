@@ -63,9 +63,10 @@ func main() {
 	if *backingFd >= 0 {
 		// /proc/self/fd/N is a "magic symlink" — the kernel resolves it via
 		// the inode the fd already opens, not via path. So even if the path
-		// it was originally opened from (/workspace-real) gets overmounted
-		// with tmpfs immediately after this process started, lookups under
-		// /proc/self/fd/N still reach the original host content.
+		// it was originally opened from (/workspace) gets overmounted with
+		// tmpfs (and then this FUSE process) immediately after the caller
+		// captured the fd, lookups under /proc/self/fd/N still reach the
+		// original host bind content.
 		resolved := fmt.Sprintf("/proc/self/fd/%d", *backingFd)
 		*backing = resolved
 	}

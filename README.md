@@ -279,6 +279,16 @@ The container prefix changed from `claude-<basename>` to `rp-<agent>-<basename>`
 
 See ADR-0007 for the full design rationale.
 
+### Upgrading across the FUSE-over-bind layout change (2026-06-16)
+
+The mount layout was simplified: the host workspace is now bind-mounted directly at `/workspace` (FUSE + tmpfs stacked on top) instead of at `/workspace-real`. **Existing containers built before this change must be recreated** — the old bind target is gone, so on restart the container would come up with an empty `/workspace`.
+
+```bash
+rp destroy && rp create
+```
+
+No workspace data is touched; only the container is rebuilt. See ADR-0010 for the layout.
+
 ---
 
 ## Security model
@@ -286,9 +296,10 @@ See ADR-0007 for the full design rationale.
 Read `docs/adr/0005-shadow-as-security-boundary-via-drop-sudo.md` for the full reasoning. Short version:
 
 - Default container view shows the workspace mediated by `rp-fuse`. Shadowed paths return ENOENT to the container; only the container's own writes survive there.
-- `/workspace-real` (the raw host bind) is overlaid with a tmpfs in the container's mount namespace. `coder` cannot read it.
-- The shadow store and the host bind both live under `/var/lib/rp/` (mode 0700, root-only). `coder` cannot traverse it.
-- `coder` has no capabilities and no sudo, so it cannot `umount` the tmpfs or escalate to root to bypass any of the above.
+- The host bind is mounted at `/workspace`; `rp-init.sh` immediately overlays a tmpfs and then `rp-fuse` on top. The raw bind is reachable only via the captured fd held by `rp-fuse` (`/proc/self/fd/N`) — there is no user-visible path to it.
+- If `rp-fuse` ever fails to mount or exits, the tmpfs underneath becomes visible — empty, not the raw host bind (fail-closed).
+- The shadow store lives at `/var/lib/rp/shadow` (mode 0700, root-only). `coder` cannot traverse it.
+- `coder` has no capabilities and no sudo, so it cannot `umount` any of the layers above or escalate to root to bypass them.
 
 What this means concretely: if you list `.env.local` in `.rp/shadow`, the contents of your host `.env.local` are unreachable to anything running inside the container.
 

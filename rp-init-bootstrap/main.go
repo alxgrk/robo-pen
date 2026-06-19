@@ -51,10 +51,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Snapshot the one env var we forward, then wipe everything.
+	// Snapshot the env vars we forward, then wipe everything else.
 	debug, hasDebug := os.LookupEnv("RP_DEBUG")
 	rpCache, hasRPCache := os.LookupEnv("RP_CACHE")
 	rpUser, hasRPUser := os.LookupEnv("RP_USER")
+	rpWorkspace, hasRPWorkspace := os.LookupEnv("RP_WORKSPACE")
+	rpLogDir, hasRPLogDir := os.LookupEnv("RP_LOG_DIR")
+	rpDiagnose, hasRPDiagnose := os.LookupEnv("RP_DIAGNOSE")
+	rpAllowSudo, hasRPAllowSudo := os.LookupEnv("RP_ALLOW_SUDO")
 
 	os.Clearenv()
 	os.Setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
@@ -68,6 +72,18 @@ func main() {
 	}
 	if hasRPUser {
 		os.Setenv("RP_USER", rpUser)
+	}
+	if hasRPWorkspace {
+		os.Setenv("RP_WORKSPACE", rpWorkspace)
+	}
+	if hasRPLogDir {
+		os.Setenv("RP_LOG_DIR", rpLogDir)
+	}
+	if hasRPDiagnose {
+		os.Setenv("RP_DIAGNOSE", rpDiagnose)
+	}
+	if hasRPAllowSudo {
+		os.Setenv("RP_ALLOW_SUDO", rpAllowSudo)
 	}
 
 	// Hardcoded target + no argv passthrough. Audit surface ends here.

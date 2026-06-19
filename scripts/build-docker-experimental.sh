@@ -14,50 +14,49 @@
 #   * Lands the result in the local docker daemon. No push, no registry.
 #
 # Usage:
-#   scripts/build-docker-experimental.sh [--user <name>] [--strip-sudo] <base-image>
+#   scripts/build-docker-experimental.sh [--user <name>] [--strip-sudo] [<base-image>]
 #
 # Flags (mirror .rp/config.yaml semantics):
-#   --user <name>    Container user. Defaults to coder (created fresh by the
-#                    overlay). Set to an image-shipped user (e.g. node) to
-#                    adopt that user instead.
+#   --user <name>    Container user. Defaults to `agent` (matches the
+#                    docker/sandbox-templates:* convention). Set to an
+#                    image-shipped user (e.g. node) to adopt that user
+#                    instead, or to a fresh name to create one in the
+#                    overlay.
 #   --strip-sudo     Opt in to removing sudo grants for the configured user
 #                    during build (ADR-0009). Default off: build fails if
-#                    the user has any sudoers entry.
+#                    the user has any sudoers entry. The sandbox-templates
+#                    shell image grants agent sudo by default, so when
+#                    targeting Docker Sandbox you'll typically want this.
+#
+# Default base: docker/sandbox-templates:shell (the Docker Sandbox shell
+# template). Override to target a different base.
 #
 # Example:
-#   scripts/build-docker-experimental.sh debian:bookworm-slim
+#   scripts/build-docker-experimental.sh                    # sandbox-templates:shell + agent
+#   scripts/build-docker-experimental.sh --strip-sudo       # same, with sudo stripped
 #   scripts/build-docker-experimental.sh --user node --strip-sudo \
 #       mcr.microsoft.com/devcontainers/javascript-node:22
 #
 # Requires: Docker Desktop with buildx (default on recent installs).
 #
-# STATUS (2026-06-16): the build path works end-to-end. The setuid Go
-# bootstrap (ADR-0010) escalates non-root agent → root, /bin/bash -p
-# preserves EUID through rp-init.sh, CapEff has SYS_ADMIN — all good
-# up to the mount step. The bind-mount of /workspace-real to
-# /var/lib/rp/backing FAILS on Docker Desktop for macOS even with
-# --privileged because Docker's host file-sharing layer presents the
-# bind via a 'fakeowner' FS driver, and that driver refuses to be the
-# source of a further bind mount.
-#
-# Tried and rejected: --security-opt seccomp=unconfined (not seccomp),
-# --privileged (not caps/AppArmor). The fakeowner block is FS-level.
-#
-# Resume options when picking this up:
-#   1. Switch Docker Desktop's file-sharing backend (VirtioFS may not
-#      use fakeowner).
-#   2. Patch rp-init.sh to detect fakeowner and skip the bind+tmpfs
-#      hide step — accepts a weaker shadow boundary (coder can read
-#      /workspace-real directly) in exchange for working under Docker
-#      Sandbox on macOS.
-#   3. Run on Linux Docker (no fakeowner; this is the path that should
-#      Just Work for Docker Sandbox hosted on Linux).
+# STATUS (2026-06-16): working end-to-end on Docker Desktop for macOS.
+# Setuid Go bootstrap (ADR-0010) escalates non-root agent → root,
+# setresuid(0,0,0) equalizes RUID so util-linux's mount(8) precheck
+# passes, /bin/bash -p preserves EUID through rp-init.sh, CapEff has
+# SYS_ADMIN. The bind is mounted directly at /workspace (no separate
+# /workspace-real). rp-init.sh captures an fd on the bind, then stacks
+# tmpfs + FUSE on top of /workspace; rp-fuse reaches the bind via
+# /proc/self/fd/N (magic-symlink resolution bypasses path lookup).
+# This sidesteps Docker's fakeowner driver, which refuses any bind/move
+# that uses the host-share as source.
 
 set -euo pipefail
 
-RP_USER=coder
+RP_USER=agent
 STRIP_SUDO=0
-BASE=""
+DIAGNOSE=0
+POC=0
+BASE="docker/sandbox-templates:shell-docker"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -69,6 +68,14 @@ while [ "$#" -gt 0 ]; do
             ;;
         --strip-sudo)
             STRIP_SUDO=1
+            shift
+            ;;
+        --diagnose)
+            DIAGNOSE=1
+            shift
+            ;;
+        --poc)
+            POC=1
             shift
             ;;
         --help|-h)
@@ -91,11 +98,10 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ -z "$BASE" ]; then
-    echo "usage: build-docker-experimental.sh [--user <name>] [--strip-sudo] <base-image>" >&2
-    echo "" >&2
-    echo "Example: build-docker-experimental.sh debian:bookworm-slim" >&2
+    echo "build-docker-experimental: BASE empty (shouldn't happen; default is docker/sandbox-templates:shell)" >&2
     exit 2
 fi
+echo "build-docker-experimental: base=$BASE user=$RP_USER strip_sudo=$STRIP_SUDO diagnose=$DIAGNOSE poc=$POC" >&2
 
 REPO_DIR=$(cd "$(dirname "$0")/.." && pwd)
 
@@ -169,37 +175,81 @@ RUN gpasswd -d ${RP_USER} wheel 2>/dev/null || true
 EOF
 fi
 
+if [ "$STRIP_SUDO" -eq 1 ]; then
 cat <<EOF
 # Strip comments before matching so a legitimate base-image comment like
 # '# Ditto for GPG agent' in /etc/sudoers doesn't false-positive when the
 # user happens to be named the same as a word in those comments.
+# Skipped entirely when --strip-sudo was NOT passed: Sandbox-compat builds
+# intentionally keep sudo (RP_ALLOW_SUDO=1 lets rp-init.sh launch anyway).
 RUN if cat /etc/sudoers /etc/sudoers.d/* 2>/dev/null | sed 's/#.*//' \\
         | grep -qE "(^|[[:space:]])${RP_USER}([[:space:]]|\$)"; then \\
         echo "rp-docker-experiment: user '$RP_USER' has a sudoers entry, refusing" >&2; exit 1; \\
     fi
+EOF
+fi
 
-RUN mkdir -p /var/lib/rp/shadow /var/lib/rp/backing /workspace /workspace-real /usr/local/lib/rp \\
+cat <<EOF
+
+RUN mkdir -p /var/lib/rp/shadow /workspace /usr/local/lib/rp \\
     && chmod 0700 /var/lib/rp \\
-    && chown root:root /var/lib/rp /var/lib/rp/shadow /var/lib/rp/backing
+    && chown root:root /var/lib/rp /var/lib/rp/shadow
 
-# Pull rp-fuse + init script + setuid bootstrap from the arm64 rp-base.
+# Pull rp-fuse + init script + setuid bootstrap + tini from the arm64 rp-base.
+# The unified ENTRYPOINT is `tini -- rp-init-bootstrap` (ADR-0010); we COPY
+# tini explicitly so the overlay works regardless of whether the user base
+# already ships tini.
 COPY --from=$BASE_TAG /usr/local/bin/rp-fuse /usr/local/bin/rp-fuse
 COPY --from=$BASE_TAG /usr/local/bin/rp-init-bootstrap /usr/local/bin/rp-init-bootstrap
 COPY --from=$BASE_TAG /usr/local/bin/rp-init.sh /usr/local/bin/rp-init.sh
+COPY --from=$BASE_TAG /usr/bin/tini /usr/local/bin/tini
 COPY --from=$BASE_TAG /etc/rp/instructions/00-container.md /etc/rp/instructions/00-container.md
 # Re-apply the setuid bit — some Docker variants strip it across COPY --from.
-RUN chmod 0755 /usr/local/bin/rp-fuse /usr/local/bin/rp-init.sh \\
+RUN chmod 0755 /usr/local/bin/rp-fuse /usr/local/bin/rp-init.sh /usr/local/bin/tini \\
     && chown root:root /usr/local/bin/rp-init-bootstrap \\
     && chmod 4755 /usr/local/bin/rp-init-bootstrap
 
 WORKDIR /workspace
 USER $RP_USER
-
-# ENTRYPOINT exec-form: when Docker Sandbox does \`docker run <image>\`, this
-# runs as USER \$RP_USER above. The setuid bit on rp-init-bootstrap means it
-# transitions to root before doing the mount + exec of rp-fuse. See ADR-0010.
-ENTRYPOINT ["/usr/local/bin/rp-init-bootstrap"]
 EOF
+
+if [ "$POC" -eq 0 ]; then
+    cat <<'EOF'
+
+# ENTRYPOINT exec-form: when Docker does `docker run <image>`, this runs as
+# USER (set above). The setuid bit on rp-init-bootstrap means it transitions
+# to root before doing the mount + exec of rp-fuse. See ADR-0010.
+ENTRYPOINT ["/usr/local/bin/tini", "--", "/usr/local/bin/rp-init-bootstrap"]
+EOF
+fi
+
+if [ "$DIAGNOSE" -eq 1 ]; then
+    cat <<'EOF'
+
+# Diagnostic mode: rp-init.sh sleeps on any pre-cover failure (instead of
+# exiting) and dumps /proc/1/status + env + /proc/mounts + failure reason
+# to $RP_LOG_DIR/rp-init.log. Lets you read why init bailed without
+# needing to exec into the container — bind /tmp/rp-fuse (host) onto
+# /tmp/rp-fuse (container) in your Sandbox template and inspect the log
+# on host. NEVER ship a diagnostic image to production — fail-open
+# without tmpfs cover is not safe.
+RUN mkdir -p /tmp/rp-fuse && chmod 0777 /tmp/rp-fuse
+ENV RP_DIAGNOSE=1 RP_LOG_DIR=/tmp/rp-fuse
+EOF
+fi
+
+if [ "$STRIP_SUDO" -eq 0 ]; then
+    cat <<'EOF'
+
+# Sandbox compatibility: the agent user has passwordless sudo (Sandbox
+# base-image requirement). rp-init.sh would normally refuse to launch
+# when the configured user has any sudoers entry (shadow boundary needs
+# no-sudo); RP_ALLOW_SUDO=1 bypasses that check. Inside Sandbox the outer
+# VM isolation is the actual security boundary, and the FUSE shadow layer
+# becomes a best-effort hint (agent could `sudo umount` it).
+ENV RP_ALLOW_SUDO=1
+EOF
+fi
 } > "$OVERLAY_CTX/Dockerfile"
 
 if [ "${RP_DEBUG:-}" = "1" ]; then
@@ -229,7 +279,7 @@ Smoke-test it with:
   docker run --rm -it \\
       --cap-add SYS_ADMIN \\
       --device /dev/fuse \\
-      -v /tmp/rp-docker-probe:/workspace-real \\
+      -v /tmp/rp-docker-probe:/workspace \\
       $OUT_TAG
 
   # No --user flag needed: the image runs as $RP_USER by default, and the
@@ -239,8 +289,9 @@ Smoke-test it with:
 In another shell:
   docker exec -it -u $RP_USER <container-id> bash
 
-Inside, /workspace is the FUSE-mediated mount. /var/lib/rp is the
-root-only shadow store. .rp/shadow rules in /workspace-real are honored.
-This image does NOT have any agent installed — it's a FUSE smoke test.
+Inside, /workspace is the FUSE-mediated mount (FUSE over tmpfs over the
+docker bind). /var/lib/rp is the root-only shadow store. .rp/shadow
+rules in the workspace are honored. This image does NOT have any agent
+installed — it's a FUSE smoke test.
 ----------------------------------------------------------------------
 MSG

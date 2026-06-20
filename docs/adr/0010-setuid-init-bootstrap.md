@@ -82,4 +82,16 @@ The `rp` wrapper bind-mounts the host workspace **1:1** — the path inside the 
 
 The scan tolerates unrelated entries: `/etc/resolv.conf` is a regular file and gets skipped by the directory check. Multiple `.rp/`-marked mounts in one container — multi-workspace FUSE (one rp-fuse process mounting N trees) is deferred until a real use case surfaces; today the scan picks the first match.
 
-The mount-stack logic above is then applied to whichever `$MNT` discovery returned. fd capture, tmpfs cover, and rp-fuse mount all target the discovered path.
+The mount-stack logic above is applied to EACH discovered workspace: per-workspace fd capture, tmpfs cover, and rp-fuse mount. rp-fuse takes one `--workspace <path>=<fd>[:ro]` argument per workspace and mounts an independent FUSE tree for each. Per-workspace shadow stores live under `/var/lib/rp/shadow/<sha256(path)[:8]>/`. When any FUSE tree exits, the others are unmounted and the process exits (container-as-unit fail-closed semantics carry over).
+
+### Read-only workspaces (`:ro`)
+
+An entry in `RP_WORKSPACE` (or a `--workspace` arg) may carry a `:ro` suffix:
+
+```
+RP_WORKSPACE="/Users/me/work/proj /Users/me/docs:ro"
+```
+
+The `:ro` flag is passed to rp-fuse, which sets the FUSE mount option `ro`. The kernel mount machinery then returns EROFS on every write — no need to gate write ops in Go. Reads continue to work; shadow rules still apply (matched paths still route to the per-workspace shadow store, but writes there also EROFS via the kernel-level read-only flag).
+
+This aligns with Sandbox's `sbx run claude . /path/to/docs:ro` syntax.

@@ -38,13 +38,18 @@ remember_container() {
 
 # Usage: rp_create_and_start <slug>
 # Runs rp create + container start so subsequent `container exec` calls work.
-# Registers the container for cleanup.
+# Registers the container for cleanup. Also pre-emptively deletes any
+# orphaned container/image from a previous failed run so the test recovers
+# cleanly.
 rp_create_and_start() {
     local slug="$1"
     local agent="${2:-claude-code}"
-    "$RP" create "$slug" >/dev/null 2>&1 || fail "rp create $slug failed"
     local cont
     cont=$(container_name "$agent" "$slug")
+    # Recover from prior failed runs that left state behind.
+    container delete --force "$cont" >/dev/null 2>&1 || true
+    container image rm -f "$cont:latest-rp" >/dev/null 2>&1 || true
+    "$RP" create "$slug" >/dev/null 2>&1 || fail "rp create $slug failed"
     remember_container "$cont"
     container start "$cont" >/dev/null 2>&1 || fail "container start $cont failed"
     echo "$cont"
@@ -58,6 +63,10 @@ cleanup_probes() {
         # it, `container delete` refuses on running containers and the next
         # test sees leftover state.
         container delete --force "$c" >/dev/null 2>&1 || true
+        # Also remove the per-test image tag (rp-<agent>-<slug>:latest-rp);
+        # otherwise images accumulate across `just test-integration` runs
+        # until the disk fills.
+        container image rm -f "$c:latest-rp" >/dev/null 2>&1 || true
     done
     rm -rf "$TMPROOT"
 }

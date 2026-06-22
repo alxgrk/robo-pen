@@ -53,7 +53,20 @@ builder_memory := "8G"
 setup:
     #!/usr/bin/env bash
     set -euo pipefail
-    brew install container jq just
+    # Skip the brew step entirely when all three deps are already on PATH.
+    # The brew formula declares container/jq/just as `depends_on`, so a
+    # `brew install robsman/tap/robo-pen` always lands here with everything
+    # already installed; calling `brew install` again is a no-op but emits
+    # ~10 lines of "Auto-updating Homebrew" + "X is already installed"
+    # noise. Source-install users hit the brew path only when something's
+    # actually missing.
+    if command -v container >/dev/null 2>&1 \
+            && command -v jq >/dev/null 2>&1 \
+            && command -v just >/dev/null 2>&1; then
+        echo "rp setup: container, jq, just already present — skipping brew" >&2
+    else
+        brew install container jq just
+    fi
     container system start
     just builder-ensure
     if [ "${RP_BUILD_FROM_SOURCE:-0}" = "1" ]; then

@@ -69,6 +69,9 @@ rp start                  # resume
 rp destroy                # remove container (host files untouched)
 rp list                   # show all rp-* containers + their workspace paths
 rp lint                   # check .rp/{shadow,config.yaml,agents/} in cwd
+rp gc                     # remove old rp-base/robo-pen-default image versions (keeps current + :latest)
+rp purge                  # NUCLEAR: destroy all rp containers + remove all rp images (RP_PURGE_YES=1 to confirm)
+rp --version              # print rp version (matches the pulled image tag)
 ```
 
 Pass an explicit name as the last argument if you want a different name from the folder basename:

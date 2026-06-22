@@ -142,6 +142,13 @@ jobs:
                 rp-fuse rp-init-bootstrap scripts tests \
                 CONTEXT.md CLAUDE.md README.md \
                 "stage/robo-pen-${VERSION}/"
+          # Patch the embedded RP_VERSION literal so the wrapper knows
+          # which image tag to pull at `rp setup` time. Source-installed
+          # / git-cloned copies keep RP_VERSION="dev" and fall back to
+          # the :latest tag.
+          sed -i 's|^RP_VERSION="dev"$|RP_VERSION="'"${VERSION}"'"|' \
+              "stage/robo-pen-${VERSION}/rp"
+          grep '^RP_VERSION=' "stage/robo-pen-${VERSION}/rp"
           # rp-fuse darwin binary pre-built so `rp lint` works out of the
           # box (no local Go toolchain needed).
           cp dist/rp-fuse-darwin-arm64 "stage/robo-pen-${VERSION}/rp-fuse/rp-fuse-darwin-arm64"

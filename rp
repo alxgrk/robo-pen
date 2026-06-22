@@ -9,6 +9,13 @@
 
 set -euo pipefail
 
+# RP_VERSION is patched by the release workflow at tarball-build time
+# (sed s|RP_VERSION="dev"|RP_VERSION="vX.Y.Z"|). For source-installed /
+# git-cloned copies the literal "dev" remains; pull-images falls back to
+# `latest` in that case.
+RP_VERSION="dev"
+export RP_VERSION
+
 SCRIPT_PATH="${(%):-%x}"
 SCRIPT_PATH="${SCRIPT_PATH:A}"
 ROBO_PEN_DIR="${ROBO_PEN_DIR:-${SCRIPT_PATH:h}}"
@@ -34,8 +41,10 @@ Usage:
   rp init [--force]
   rp lint
   rp list | rp stats
+  rp pull-images | rp gc | rp purge
   rp build | rp build-base | rp build-host | rp rebuild
   rp setup | rp service-start | rp service-stop
+  rp --version
 
 Workspace conventions:
   * PATH defaults to "." (cwd) for create/run.
@@ -55,6 +64,10 @@ fi
 case "$1" in
     -h|--help|help)
         usage
+        exit 0
+        ;;
+    --version|version)
+        echo "$RP_VERSION"
         exit 0
         ;;
     --recipes)

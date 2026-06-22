@@ -5,11 +5,14 @@ host_dir := invocation_directory()
 host_name := file_name(invocation_directory())
 
 # Pre-built images live at ghcr.io/<owner>/{rp-base,robo-pen-default}.
-# Override RP_REGISTRY_OWNER if you've forked or want to pull from a
-# different namespace. Override RP_IMAGE_TAG to pin a specific release
-# instead of tracking :latest.
+# Image tag picks the wrapper's embedded RP_VERSION when it's a real
+# release tag (vX.Y.Z); for source-installed copies (RP_VERSION="dev")
+# fall back to :latest. Explicit RP_IMAGE_TAG overrides both. This pins
+# a brew-installed rp to images built from the same source tree.
 registry_owner := env_var_or_default("RP_REGISTRY_OWNER", "robsman")
-image_tag := env_var_or_default("RP_IMAGE_TAG", "latest")
+rp_version := env_var_or_default("RP_VERSION", "dev")
+default_image_tag := if rp_version =~ "^v[0-9]" { rp_version } else { "latest" }
+image_tag := env_var_or_default("RP_IMAGE_TAG", default_image_tag)
 ghcr_base := "ghcr.io/" + registry_owner + "/rp-base:" + image_tag
 ghcr_default := "ghcr.io/" + registry_owner + "/robo-pen-default:" + image_tag
 
@@ -115,24 +118,34 @@ builder-reset:
 # ── Image ─────────────────────────────────────────────────────────
 
 # Pull pre-built rp-base + robo-pen-default from ghcr.io and re-tag them
-# locally as rp-base + robo-pen-default so the rest of the rp tooling
-# (which references the local tags) just works. Skips images that are
-# already present locally.
+# both as `<local>:<version>` (versioned, for `rp gc` to enumerate) and as
+# `<local>` (no tag = :latest, what the rest of the rp tooling references).
+# When the wrapper's RP_VERSION is "dev" the version tag is "latest"; the
+# `<local>:<version>` tag and the unversioned tag converge in that case.
+#
+# Skips the pull when the versioned tag already exists locally — that's
+# the safe "this exact image is already here" check (unlike the older
+# unversioned check, which couldn't distinguish stale-from-prior-release
+# from current).
 pull-images:
     #!/usr/bin/env bash
     set -euo pipefail
     pull_and_retag() {
-        local remote=$1 local_tag=$2
-        if container image inspect "$local_tag" >/dev/null 2>&1; then
-            echo "rp: $local_tag already present locally, skipping pull" >&2
-            return 0
+        local remote=$1 local_name=$2 version=$3
+        local versioned="${local_name}:${version}"
+        if container image inspect "$versioned" >/dev/null 2>&1; then
+            echo "rp: $versioned already present locally, skipping pull" >&2
+        else
+            echo "rp: pulling $remote" >&2
+            container image pull "$remote"
+            container image tag "$remote" "$versioned"
         fi
-        echo "rp: pulling $remote" >&2
-        container image pull "$remote"
-        container image tag "$remote" "$local_tag"
+        # Always re-point the unversioned name at the just-pulled image so
+        # the rest of the tooling sees the current version.
+        container image tag "$versioned" "$local_name"
     }
-    pull_and_retag {{ghcr_base}} rp-base
-    pull_and_retag {{ghcr_default}} {{image}}
+    pull_and_retag {{ghcr_base}} rp-base {{image_tag}}
+    pull_and_retag {{ghcr_default}} {{image}} {{image_tag}}
 
 # Build rp-base locally (minimal image with rp-fuse + init script); see ADR-0006.
 # Most users want `just pull-images` (much faster). Use this when developing
@@ -155,6 +168,75 @@ rebuild: builder-ensure
         -t rp-base \
         {{justfile_directory()}}
     container build --no-cache -t {{image}} {{justfile_directory()}}
+
+# Remove rp-base + robo-pen-default image tags older than the current
+# pin. The current pin = whatever `{{image_tag}}` resolves to (the
+# wrapper's RP_VERSION, or `latest`). Skips tags referenced by any live
+# container (Apple Container blocks rm in that case anyway). Project
+# images (rp-<agent>-<name>:latest-rp) are NOT touched — `rp destroy`
+# removes those.
+gc:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    keep_tag={{image_tag}}
+    # Collect tags currently referenced by ANY container (running or stopped)
+    # so we don't remove an image a stopped rp container would resume into.
+    in_use=$(container list -a 2>/dev/null \
+        | awk 'NR>1 && $1 != "" {print $2}' \
+        | sort -u)
+    sweep() {
+        local repo=$1
+        # Image lines look like: "rp-base   v0.1.0   <id>   ..." — grab
+        # tag column for matching rows.
+        container image list 2>/dev/null \
+            | awk -v r="$repo" 'NR>1 && $1==r {print $2}' \
+            | while read -r tag; do
+                [ -z "$tag" ] && continue
+                # Always keep the current pin AND `latest` (last-known-good fallback).
+                [ "$tag" = "$keep_tag" ] && continue
+                [ "$tag" = "latest" ] && continue
+                ref="${repo}:${tag}"
+                if grep -qx "$ref" <<<"$in_use"; then
+                    echo "rp gc: keeping $ref (in use by a container)" >&2
+                    continue
+                fi
+                echo "rp gc: removing $ref" >&2
+                container image rm -f "$ref" >/dev/null 2>&1 \
+                    || echo "rp gc: WARN failed to remove $ref" >&2
+            done
+    }
+    sweep rp-base
+    sweep {{image}}
+    echo "rp gc: done (kept :$keep_tag and :latest for both repos)"
+
+# Destroy ALL rp-managed containers AND remove all rp images (rp-base,
+# robo-pen-default, every per-project image). For a full reset after
+# a broken state or before uninstalling. Workspace files on host are
+# untouched. Aggressive — confirm intent before running on a shared
+# machine.
+purge:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "${RP_PURGE_YES:-}" != "1" ]; then
+        echo "rp purge: this removes ALL rp containers + rp images." >&2
+        echo "          Re-run with RP_PURGE_YES=1 to confirm." >&2
+        exit 1
+    fi
+    echo "rp purge: removing rp-managed containers" >&2
+    container list -a -q 2>/dev/null \
+        | grep '^rp-' \
+        | xargs -r -I {} container delete --force {} >/dev/null 2>&1 || true
+    echo "rp purge: removing rp images" >&2
+    for repo in rp-base {{image}}; do
+        container image list 2>/dev/null \
+            | awk -v r="$repo" 'NR>1 && $1==r {print $1 ":" $2}' \
+            | xargs -r -I {} container image rm -f {} >/dev/null 2>&1 || true
+    done
+    # Per-project images too (rp-<agent>-<name>:latest-rp pattern).
+    container image list 2>/dev/null \
+        | awk 'NR>1 && $1 ~ /^rp-/ {print $1 ":" $2}' \
+        | xargs -r -I {} container image rm -f {} >/dev/null 2>&1 || true
+    echo "rp purge: done"
 
 # Cross-build the host-side rp-fuse binary (darwin/arm64), used by `rp lint`.
 # Release tarballs ship a pre-built binary at the expected path, so this

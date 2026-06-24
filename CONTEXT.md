@@ -53,7 +53,7 @@ A directory inside the container that survives `rp destroy && rp create`. Declar
 _Avoid_: named volume (overloaded by container runtimes), home volume (overspecific).
 
 **Host file import**:
-A file or directory copied from the host into the container at `rp create` time, declared in a profile manifest's `host_files:` block. `src` is a host path (`~` expands to host's `$HOME`); `dst` is an absolute in-container path. Volume-backed dsts write directly to the host volume backing dir; non-volume dsts go through `container cp` into the container's writable layer. Missing host sources skip silently (default) or fail with `if_missing: error`. Re-applied on every `rp create`; agent writes to volume paths NOT in `host_files` persist across destroy+create. See ADR-0015.
+A file or directory copied from the host into the container at `rp create` time. Declared in `.rp/config.yaml` (`host_files:` block) OR in a profile manifest's `host_files:`. Both sources merge at create time; default in built-in profiles is empty so nothing crosses the host boundary by accident. `src` is a host path (`~` expands to host's `$HOME`); `dst` is an absolute in-container path. Volume-backed dsts write directly to the host volume backing dir; non-volume dsts go through `container cp` into the container's writable layer. Missing host sources skip silently (default) or fail with `if_missing: error`. Re-applied on every `rp create`; agent writes to volume paths NOT in `host_files` persist across destroy+create. See ADR-0015.
 _Avoid_: host bind (already a workspace term), seed file (overloaded with the volume-seed mechanism in ADR-0014).
 
 **Host keychain import**:

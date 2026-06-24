@@ -40,6 +40,14 @@ type ProjectConfig struct {
 	// when the user wants per-workspace plugins without overriding the
 	// entire profile bundle. See ADR-0016.
 	Plugins *PluginSpec `yaml:"plugins,omitempty"`
+	// HostFiles + HostKeychain: per-workspace host imports. Same shape
+	// as the corresponding profile manifest fields (ADR-0015) — merged
+	// with the profile's at create time. Workspace entries run AFTER
+	// the profile's so the user can override / extend. Moved out of
+	// the claude-code default manifest deliberately; users opt in via
+	// config.yaml so nothing crosses the host boundary without intent.
+	HostFiles    []HostFile       `yaml:"host_files,omitempty"`
+	HostKeychain []KeychainImport `yaml:"host_keychain,omitempty"`
 	// HostAliases declares host-resolvable names inside the container.
 	// Each entry is either:
 	//   - "name"             → resolves to the runtime's host-gateway
@@ -204,6 +212,36 @@ func (c *ProjectConfig) Validate() error {
 	if c.Fuse != nil && c.Fuse.Cache != nil {
 		if *c.Fuse.Cache < 0 {
 			return fmt.Errorf("config: fuse.cache: must be ≥ 0, got %g", *c.Fuse.Cache)
+		}
+	}
+	for i, h := range c.HostFiles {
+		if h.Src == "" {
+			return fmt.Errorf("config: host_files[%d]: src is required", i)
+		}
+		if !strings.HasPrefix(h.Src, "~") && !filepath.IsAbs(h.Src) {
+			return fmt.Errorf("config: host_files[%d].src %q must be absolute or start with `~`", i, h.Src)
+		}
+		if h.Dst == "" || !filepath.IsAbs(h.Dst) {
+			return fmt.Errorf("config: host_files[%d].dst %q must be absolute", i, h.Dst)
+		}
+		if err := validateIfMissing(h.IfMissing); err != nil {
+			return fmt.Errorf("config: host_files[%d].if_missing: %w", i, err)
+		}
+	}
+	for i, k := range c.HostKeychain {
+		if k.Service == "" {
+			return fmt.Errorf("config: host_keychain[%d]: service is required", i)
+		}
+		if k.Dst == "" || !filepath.IsAbs(k.Dst) {
+			return fmt.Errorf("config: host_keychain[%d].dst %q must be absolute", i, k.Dst)
+		}
+		if k.Mode != "" {
+			if err := validateFileMode(k.Mode); err != nil {
+				return fmt.Errorf("config: host_keychain[%d].mode: %w", i, err)
+			}
+		}
+		if err := validateIfMissing(k.IfMissing); err != nil {
+			return fmt.Errorf("config: host_keychain[%d].if_missing: %w", i, err)
 		}
 	}
 	if c.Plugins != nil {

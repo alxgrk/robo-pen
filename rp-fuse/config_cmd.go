@@ -150,6 +150,32 @@ func projectConfigField(c *ProjectConfig, name string) (string, error) {
 			return "", nil
 		}
 		return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%f", *c.Fuse.Cache), "0"), "."), nil
+	case "host_files":
+		// Same TSV shape as the profile manifest accessor so
+		// seed-host-files.sh treats both sources uniformly.
+		var lines []string
+		for _, h := range c.HostFiles {
+			ifm := h.IfMissing
+			if ifm == "" {
+				ifm = "skip"
+			}
+			lines = append(lines, h.Src+"\t"+h.Dst+"\t"+ifm)
+		}
+		return strings.Join(lines, "\n"), nil
+	case "host_keychain":
+		var lines []string
+		for _, k := range c.HostKeychain {
+			mode := k.Mode
+			if mode == "" {
+				mode = "0600"
+			}
+			ifm := k.IfMissing
+			if ifm == "" {
+				ifm = "skip"
+			}
+			lines = append(lines, k.Service+"\t"+k.Dst+"\t"+mode+"\t"+ifm)
+		}
+		return strings.Join(lines, "\n"), nil
 	case "plugins.marketplaces":
 		if c.Plugins == nil {
 			return "", nil

@@ -111,6 +111,51 @@
 #   install:
 #     - claude-hud@claude-hud          # <plugin-name>@<marketplace-self-name>
 
+# ── Host file imports ────────────────────────────────────────────
+# Copy files from the host into the container at `rp create` time. Use
+# for credentials, config, identity — anything you'd otherwise re-set
+# up by hand inside every fresh container.
+#
+# Default: NOTHING is copied. Each line is an explicit opt-in so host
+# state doesn't cross the boundary by accident. Uncomment what you
+# want.
+#
+# Re-applied on every `rp create`. Workspace volume persists agent
+# writes across destroy+create UNLESS they target a path also in
+# host_files (which gets overwritten by the host copy).
+#
+# Missing host sources are logged + skipped (if_missing: skip).
+# Set if_missing: error to fail rp create if a source is missing.
+#
+# host_files:
+#   - src: ~/.claude/settings.json
+#     dst: /home/{{user}}/.claude/settings.json
+#   - src: ~/.claude/CLAUDE.md
+#     dst: /home/{{user}}/.claude/CLAUDE.md
+#   - src: ~/.gitconfig            # git identity for `git commit` inside
+#     dst: /home/{{user}}/.gitconfig
+#   - src: ~/.npmrc                # auth for private npm registries
+#     dst: /home/{{user}}/.npmrc
+#
+# NOT recommended (overlap with the in-container plugin install — copying
+# can resurrect host plugin/MCP refs that don't exist in the container):
+#   ~/.claude.json
+# Use it only if you understand the consequences:
+#   - src: ~/.claude.json
+#     dst: /home/{{user}}/.claude.json
+
+# ── Keychain credentials (macOS only) ────────────────────────────
+# Export a macOS Keychain entry to a file inside the container.
+# For Claude Code's OAuth login, the Keychain service is
+# `Claude Code-credentials`; the file Claude reads on non-macOS is
+# `~/.claude/.credentials.json`. Without this you'd run `claude login`
+# inside the container once per workspace.
+#
+# host_keychain:
+#   - service: Claude Code-credentials
+#     dst: /home/{{user}}/.claude/.credentials.json
+#     mode: "0600"
+
 # ── Host aliases ──────────────────────────────────────────────────
 # Inject /etc/hosts entries inside the container so processes can resolve
 # well-known names. `host.containers.internal` → the host's gateway IP

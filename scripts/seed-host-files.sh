@@ -138,10 +138,15 @@ write_dst() {
     fi
 }
 
-# --- Host files -----------------------------------------------------------
-"$RP_FUSE" profile --workspace "$WORKSPACE" --repo-dir "$REPO_DIR" --agent "$AGENT" \
-    field host_files 2>/dev/null \
-    | while IFS=$'\t' read -r src dst if_missing; do
+# Collect host_files entries from both sources, profile first then
+# config. Workspace entries override / extend profile entries.
+{
+    "$RP_FUSE" profile --workspace "$WORKSPACE" --repo-dir "$REPO_DIR" --agent "$AGENT" \
+        field host_files 2>/dev/null || true
+    if [ -f "$WORKSPACE/.rp/config.yaml" ]; then
+        "$RP_FUSE" config --file "$WORKSPACE/.rp/config.yaml" field host_files 2>/dev/null || true
+    fi
+} | while IFS=$'\t' read -r src dst if_missing; do
         [ -z "$src" ] && continue
         host_src=$(expand_tilde "$src")
         expanded_dst=$(expand_user_template "$dst")
@@ -158,9 +163,14 @@ write_dst() {
     done
 
 # --- Host keychain (macOS only) -------------------------------------------
-"$RP_FUSE" profile --workspace "$WORKSPACE" --repo-dir "$REPO_DIR" --agent "$AGENT" \
-    field host_keychain 2>/dev/null \
-    | while IFS=$'\t' read -r service dst mode if_missing; do
+# Same dual-source merge as host_files above.
+{
+    "$RP_FUSE" profile --workspace "$WORKSPACE" --repo-dir "$REPO_DIR" --agent "$AGENT" \
+        field host_keychain 2>/dev/null || true
+    if [ -f "$WORKSPACE/.rp/config.yaml" ]; then
+        "$RP_FUSE" config --file "$WORKSPACE/.rp/config.yaml" field host_keychain 2>/dev/null || true
+    fi
+} | while IFS=$'\t' read -r service dst mode if_missing; do
         [ -z "$service" ] && continue
         expanded_dst=$(expand_user_template "$dst")
         if ! command -v security >/dev/null 2>&1; then

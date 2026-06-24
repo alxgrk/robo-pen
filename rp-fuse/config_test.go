@@ -390,3 +390,37 @@ func TestProjectConfigPluginsFieldAccessor(t *testing.T) {
 		t.Errorf("plugins.install accessor = %q", got)
 	}
 }
+
+func TestParseProjectConfig_HostFilesParse(t *testing.T) {
+	cfg, err := parseProjectConfigBytes([]byte(`host_files:
+  - src: ~/.gitconfig
+    dst: /home/coder/.gitconfig
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.HostFiles) != 1 || cfg.HostFiles[0].Src != "~/.gitconfig" {
+		t.Errorf("HostFiles = %+v", cfg.HostFiles)
+	}
+}
+
+func TestParseProjectConfig_HostKeychainParse(t *testing.T) {
+	cfg, err := parseProjectConfigBytes([]byte(`host_keychain:
+  - service: Foo
+    dst: /home/coder/.foo
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.HostKeychain) != 1 || cfg.HostKeychain[0].Service != "Foo" {
+		t.Errorf("HostKeychain = %+v", cfg.HostKeychain)
+	}
+}
+
+func TestProjectConfig_HostFilesFieldAccessor(t *testing.T) {
+	cfg, _ := parseProjectConfigBytes([]byte("host_files:\n  - src: ~/.x\n    dst: /h/.x\n"))
+	got, _ := projectConfigField(cfg, "host_files")
+	if got != "~/.x\t/h/.x\tskip" {
+		t.Errorf("host_files accessor = %q", got)
+	}
+}

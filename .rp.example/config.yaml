@@ -128,6 +128,19 @@
 # Set if_missing: error to fail rp create if a source is missing.
 #
 # host_files:
+#   - src: ~/.claude.json          # user/OAuth state. REQUIRED for the
+#     dst: /home/{{user}}/.claude.json
+#                                  # Keychain credentials (below) to be
+#                                  # recognized as a logged-in session;
+#                                  # without it claude-code prompts for
+#                                  # login on every fresh container.
+#                                  # The file also carries host-specific
+#                                  # MCP / experiment caches — innocuous
+#                                  # but somewhat noisy. Plugin install
+#                                  # metadata lives elsewhere
+#                                  # (~/.claude/plugins/installed_plugins.json),
+#                                  # so no conflict with the in-container
+#                                  # plugin install.
 #   - src: ~/.claude/settings.json
 #     dst: /home/{{user}}/.claude/settings.json
 #   - src: ~/.claude/CLAUDE.md
@@ -136,13 +149,6 @@
 #     dst: /home/{{user}}/.gitconfig
 #   - src: ~/.npmrc                # auth for private npm registries
 #     dst: /home/{{user}}/.npmrc
-#
-# NOT recommended (overlap with the in-container plugin install — copying
-# can resurrect host plugin/MCP refs that don't exist in the container):
-#   ~/.claude.json
-# Use it only if you understand the consequences:
-#   - src: ~/.claude.json
-#     dst: /home/{{user}}/.claude.json
 
 # ── Keychain credentials (macOS only) ────────────────────────────
 # Export a macOS Keychain entry to a file inside the container.

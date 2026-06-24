@@ -34,6 +34,12 @@ type ProjectConfig struct {
 	StripSudo bool          `yaml:"strip_sudo,omitempty"`
 	Resources *ResourceSpec `yaml:"resources,omitempty"`
 	Fuse      *FuseSpec     `yaml:"fuse,omitempty"`
+	// Plugins extends the agent profile's plugin set (manifest's
+	// plugins.marketplaces + plugins.install). The build merges both
+	// lists in order: profile entries first, then config entries. Used
+	// when the user wants per-workspace plugins without overriding the
+	// entire profile bundle. See ADR-0016.
+	Plugins *PluginSpec `yaml:"plugins,omitempty"`
 	// HostAliases declares host-resolvable names inside the container.
 	// Each entry is either:
 	//   - "name"             → resolves to the runtime's host-gateway
@@ -198,6 +204,18 @@ func (c *ProjectConfig) Validate() error {
 	if c.Fuse != nil && c.Fuse.Cache != nil {
 		if *c.Fuse.Cache < 0 {
 			return fmt.Errorf("config: fuse.cache: must be ≥ 0, got %g", *c.Fuse.Cache)
+		}
+	}
+	if c.Plugins != nil {
+		for i, mref := range c.Plugins.Marketplaces {
+			if err := validatePluginRef(mref); err != nil {
+				return fmt.Errorf("config: plugins.marketplaces[%d]: %w", i, err)
+			}
+		}
+		for i, ins := range c.Plugins.Install {
+			if err := validatePluginRef(ins); err != nil {
+				return fmt.Errorf("config: plugins.install[%d]: %w", i, err)
+			}
 		}
 	}
 	for i, a := range c.HostAliases {

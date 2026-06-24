@@ -150,6 +150,16 @@ func projectConfigField(c *ProjectConfig, name string) (string, error) {
 			return "", nil
 		}
 		return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%f", *c.Fuse.Cache), "0"), "."), nil
+	case "plugins.marketplaces":
+		if c.Plugins == nil {
+			return "", nil
+		}
+		return strings.Join(c.Plugins.Marketplaces, "\n"), nil
+	case "plugins.install":
+		if c.Plugins == nil {
+			return "", nil
+		}
+		return strings.Join(c.Plugins.Install, "\n"), nil
 	case "host_aliases":
 		// One alias per line: "name=ip". Always includes the implicit
 		// `host.containers.internal=host-gateway` entry. Shell consumers

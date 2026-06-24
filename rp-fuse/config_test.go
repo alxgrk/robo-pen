@@ -360,3 +360,33 @@ func TestParseProjectConfig_RejectBadIP(t *testing.T) {
 		t.Error("expected error on out-of-range IPv4 octet")
 	}
 }
+
+func TestParseProjectConfig_PluginsParse(t *testing.T) {
+	cfg, err := parseProjectConfigBytes([]byte(`plugins:
+  marketplaces:
+    - jarrodwatts/claude-hud
+  install:
+    - claude-hud@jarrodwatts-claude-hud
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Plugins == nil || len(cfg.Plugins.Marketplaces) != 1 || len(cfg.Plugins.Install) != 1 {
+		t.Fatalf("plugins = %+v", cfg.Plugins)
+	}
+}
+
+func TestParseProjectConfig_PluginsRejectInjection(t *testing.T) {
+	_, err := parseProjectConfigBytes([]byte("plugins:\n  install:\n    - 'evil; rm -rf /'\n"))
+	if err == nil {
+		t.Error("expected error on shell-injection in plugins.install")
+	}
+}
+
+func TestProjectConfigPluginsFieldAccessor(t *testing.T) {
+	cfg, _ := parseProjectConfigBytes([]byte("plugins:\n  install:\n    - x@a\n"))
+	got, _ := projectConfigField(cfg, "plugins.install")
+	if got != "x@a" {
+		t.Errorf("plugins.install accessor = %q", got)
+	}
+}

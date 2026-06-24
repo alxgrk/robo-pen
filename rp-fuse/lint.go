@@ -187,6 +187,17 @@ func lintConfig(path string, exitCode *int) *ProjectConfig {
 	if cfg.Fuse != nil && cfg.Fuse.Cache != nil {
 		fmt.Printf("  fuse.cache: %g\n", *cfg.Fuse.Cache)
 	}
+	if cfg.Plugins != nil {
+		if len(cfg.Plugins.Marketplaces) > 0 || len(cfg.Plugins.Install) > 0 {
+			fmt.Printf("  plugins (workspace additions, merged with profile's):\n")
+			for _, m := range cfg.Plugins.Marketplaces {
+				fmt.Printf("    marketplace: %s\n", m)
+			}
+			for _, p := range cfg.Plugins.Install {
+				fmt.Printf("    install: %s\n", p)
+			}
+		}
+	}
 	// Always show the effective host aliases (includes the implicit
 	// host.containers.internal entry) — the user may not know it's added
 	// automatically and lint is the place to surface it.

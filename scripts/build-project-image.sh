@@ -377,8 +377,34 @@ EOF
 # tree doesn't pollute the image's /home/<user>; we copy the result
 # into the seed location for any volume that mounts at .claude/.
 # Skipped entirely when plugins.install is empty. See ADR-0016.
+# Profile-declared plugins (agent.profiles/<name>/manifest.yaml or
+# workspace override).
 PLUGIN_MARKETPLACES=$("$RP_FUSE" profile --workspace "$WORKSPACE" --repo-dir "$REPO_DIR" --agent "$AGENT" field plugins.marketplaces 2>/dev/null || true)
 PLUGIN_INSTALL=$("$RP_FUSE" profile --workspace "$WORKSPACE" --repo-dir "$REPO_DIR" --agent "$AGENT" field plugins.install 2>/dev/null || true)
+
+# Workspace-level additions (.rp/config.yaml). Appended to whatever the
+# profile already declared, in order. Lets users add personal plugins
+# without overriding the entire profile bundle. See ADR-0016.
+if [ -f "$WORKSPACE/.rp/config.yaml" ]; then
+    cfg_marketplaces=$("$RP_FUSE" config --file "$WORKSPACE/.rp/config.yaml" field plugins.marketplaces 2>/dev/null || true)
+    cfg_install=$("$RP_FUSE" config --file "$WORKSPACE/.rp/config.yaml" field plugins.install 2>/dev/null || true)
+    if [ -n "$cfg_marketplaces" ]; then
+        if [ -n "$PLUGIN_MARKETPLACES" ]; then
+            PLUGIN_MARKETPLACES="$PLUGIN_MARKETPLACES
+$cfg_marketplaces"
+        else
+            PLUGIN_MARKETPLACES=$cfg_marketplaces
+        fi
+    fi
+    if [ -n "$cfg_install" ]; then
+        if [ -n "$PLUGIN_INSTALL" ]; then
+            PLUGIN_INSTALL="$PLUGIN_INSTALL
+$cfg_install"
+        else
+            PLUGIN_INSTALL=$cfg_install
+        fi
+    fi
+fi
 
 if [ -n "$PLUGIN_INSTALL" ]; then
     # Find the volume (if any) whose mount path covers /home/<user>/.claude/.
